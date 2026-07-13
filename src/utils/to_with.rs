@@ -1,4 +1,4 @@
-// mochou-p/text-editor/src/utils/to_with.rs
+// mochou-p/editerm/src/utils/to_with.rs
 
 pub trait ToWith: Ord + Copy {
     fn to_min_with(&mut self, rhs: Self) -> &mut Self {

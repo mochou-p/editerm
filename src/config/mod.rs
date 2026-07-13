@@ -1,4 +1,4 @@
-// mochou-p/text-editor/src/config/mod.rs
+// mochou-p/editerm/src/config/mod.rs
 
 mod theme;
 

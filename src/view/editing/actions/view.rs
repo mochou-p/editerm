@@ -1,30 +1,32 @@
-// mochou-p/text-editor/src/view/editing/actions/view.rs
+// mochou-p/editerm/src/view/editing/actions/view.rs
 
-use crate::view::View;
+use spliterm::PaneCommand;
 
 
 impl super::super::Editing {
-    pub fn scroll_dir(&mut self, direction: isize) {
+    pub fn scroll_dir(&mut self, direction: isize) -> PaneCommand {
         match direction {
             -1 => self.scroll_up(),
             1  => self.scroll_down(),
-            _  => ()
+            _  => PaneCommand::DoNothing
         }
     }
 
-    fn scroll_down(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-
-        if self.scroll().y != (self.files[file].lines.len() - 1) as isize {
-            self.scroll_mut().y += 1;
+    fn scroll_down(&mut self) -> PaneCommand {
+        if self.scroll.y != (self.file.lines.len() - 1) as isize {
+            self.scroll.y += 1;
+            PaneCommand::RerenderMe
+        } else {
+            PaneCommand::DoNothing
         }
     }
 
-    fn scroll_up(&mut self) {
-        if self.file.is_none() { return; };
-
-        if self.scroll().y != 0 {
-            self.scroll_mut().y -= 1;
+    fn scroll_up(&mut self) -> PaneCommand {
+        if self.scroll.y != 0 {
+            self.scroll.y -= 1;
+            PaneCommand::RerenderMe
+        } else {
+            PaneCommand::DoNothing
         }
     }
 }

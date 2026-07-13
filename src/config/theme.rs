@@ -1,4 +1,4 @@
-// mochou-p/text-editor/src/config/theme.rs
+// mochou-p/editerm/src/config/theme.rs
 
 use betterm::color::{BgRgb, FgRgb};
 
@@ -6,7 +6,7 @@ use betterm::color::{BgRgb, FgRgb};
 #[allow(dead_code)]
 pub struct Theme {
     pub backgrounds: Backgrounds,
-    pub foreground:  Foreground,
+    pub foregrounds: Foregrounds,
     pub special:     Special,
     pub ansi:        Ansi
 }
@@ -22,14 +22,18 @@ pub struct Background {
     pub disabled: String
 }
 
+pub struct Foregrounds {
+    pub primary:   Foreground,
+    pub secondary: Foreground
+}
+
 pub struct Foreground {
-    pub active: String,
-    pub normal: String
+    pub active:   String,
+    pub normal:   String
 }
 
 pub struct Special {
-    pub error:    String,
-    pub overflow: String
+    pub error: String
 }
 
 #[allow(dead_code)]
@@ -64,13 +68,18 @@ impl Theme {
                     disabled: BgRgb(24, 24, 37).to_string()
                 }
             },
-            foreground: Foreground {
-                active: FgRgb(205, 214, 244).to_string(),
-                normal: FgRgb(166, 173, 200).to_string()
+            foregrounds: Foregrounds {
+                primary: Foreground {
+                    active: FgRgb(205, 214, 244).to_string(),
+                    normal: FgRgb(166, 173, 200).to_string()
+                },
+                secondary: Foreground {
+                    active: FgRgb(205, 214, 244).to_string(),
+                    normal: FgRgb(166, 173, 200).to_string()
+                }
             },
             special: Special {
-                error:    BgRgb(210,  15, 57).to_string() + &FgRgb(17, 17, 27).to_string(),
-                overflow: BgRgb(223, 142, 29).to_string() + &FgRgb(17, 17, 27).to_string()
+                error: BgRgb(210,  15, 57).to_string() + &FgRgb(17, 17, 27).to_string()
             },
             ansi: Ansi {
                 red:     FgRgb(243, 139, 168).to_string(),

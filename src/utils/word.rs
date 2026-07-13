@@ -1,4 +1,4 @@
-// mochou-p/text-editor/src/utils/word.rs
+// mochou-p/editerm/src/utils/word.rs
 
 use super::Utf8;
 

@@ -1,8 +1,8 @@
-# mochou-p/text-editor/Cargo.toml
+# mochou-p/editerm/Cargo.toml
 
 [package]
 publish      = false
-name         = "text-editor"
+name         = "editerm"
 version      = "0.0.0"
 edition      = "2024"
 rust-version = "1.92.0"
@@ -10,7 +10,7 @@ authors      = ["mochou-p"]
 description  = "a based text-based text editor"
 readme       = "README.md"
 license      = "MIT OR Apache-2.0"
-repository   = "https://github.com/mochou-p/text-editor"
+repository   = "https://github.com/mochou-p/editerm"
 keywords     = ["editor", "text", "text-editor", "text-based"]
 categories   = ["text-editors", "command-line-utilities", "development-tools", "filesystem"]
 
@@ -35,6 +35,4 @@ incremental      = false
 codegen-units    = 1
 
 [dependencies]
-betterm = { git = "https://github.com/mochou-p/betterm" }
-libc    = "0.2.185"
-termion = "4.0.6"
+spliterm = { git = "https://github.com/mochou-p/spliterm" }

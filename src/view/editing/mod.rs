@@ -1,19 +1,20 @@
-// mochou-p/text-editor/src/view/editing/mod.rs
+// mochou-p/editerm/src/view/editing/mod.rs
 
 mod actions;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
-use termion::event::{Event, Key, MouseButton, MouseEvent};
-use super::{View, ViewData, Files};
-use crate::{Editor, Cursor};
+use spliterm::{PaneView, PaneCommand};
+use spliterm::betterm;
+use betterm::{color::ansi, styled_printer::StyledPrinter};
+use betterm::terminal::{Event, KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton, CtrlableChar, ScrollEvent, ScrollDirection};
+use crate::Cursor;
 use crate::utils::{ToWith, Utf8};
 
 
 pub struct Editing {
-    view_data: ViewData,
-    file:      Option<PathBuf>,
-    files:     HashMap<PathBuf, File>
+    path:   PathBuf,
+    file:   File,
+    scroll: Vec2
 }
 
 pub struct File {
@@ -22,12 +23,18 @@ pub struct File {
     lines:   Vec<String>
 }
 
+#[derive(Clone, PartialEq)]
+struct Vec2 {
+    x: isize,
+    y: isize
+}
+
 impl Editing {
-    pub fn new() -> Self {
+    pub fn new(path: PathBuf) -> Self {
         Self {
-            view_data: ViewData::fullscreen(),
-            file:      None,
-            files:     HashMap::new()
+            file:   Self::read_file(&path),
+            path,
+            scroll: Vec2 { x: 0, y: 0 }
         }
     }
 
@@ -46,216 +53,146 @@ impl Editing {
         }
     }
 
-    pub fn open_file_from_browser(&mut self, editor: &mut Editor, path: PathBuf) {
-        let file = Self::read_file(&path);
-        self.files.insert(path.clone(), file);
-        self.file = Some(path.clone());
+    // TODO: maybe
+    fn _cursor_visible_relative_position(&self, _file: &PathBuf) -> (isize, isize) {
+        let cursor = &self.file.cursors[0];
 
-        editor.view::<Files, ()>(|_, view| view.add_file(path.clone()));
-    }
-
-    pub fn open_file_from_files(&mut self, _editor: &mut Editor, path: PathBuf) {
-        let file = Self::read_file(&path);
-        self.files.insert(path.clone(), file);
-        self.file = Some(path.clone());
-    }
-
-    fn cursor_visible_relative_position(&self, file: &PathBuf) -> (isize, isize) {
-        let cursor = &self.files[file].cursors[0];
-
-        let x = cursor.x + 1 - self.scroll().x;
-        let y = cursor.y + 1 - self.scroll().y;
+        let x = cursor.x + 1 - self.scroll.x;
+        let y = cursor.y + 1 - self.scroll.y;
 
         (x, y)
     }
 
-    fn snap_to_cursor(&mut self) {
-        let cursor = {
-            let Some(ref file) = self.file.as_ref().cloned() else { return; };
-            self.files[file].cursors[0].clone()
-        };
+    fn snap_to_cursor(&mut self, w: usize, h: usize) -> PaneCommand {
+        let cursor     = self.file.cursors[0].clone();
+        let old_scroll = self.scroll.clone();
 
-        if cursor.y < self.scroll().y {
-            self.scroll_mut().y = cursor.y;
-        } else if cursor.y > self.scroll().y + self.size().y - 1 {
-            self.scroll_mut().y = cursor.y - self.size().y + 1;
+        if cursor.y < self.scroll.y {
+            self.scroll.y = cursor.y;
+        } else if cursor.y > self.scroll.y + h as isize - 1 {
+            self.scroll.y = cursor.y - h as isize + 1;
         }
 
-        if cursor.x < self.scroll().x {
-            self.scroll_mut().x = cursor.x;
-        } else if cursor.x > self.scroll().x + self.size().x - 1 {
-            self.scroll_mut().x = cursor.x - self.size().x + 1;
+        if cursor.x < self.scroll.x {
+            self.scroll.x = cursor.x;
+        } else if cursor.x > self.scroll.x + w as isize - 1 {
+            self.scroll.x = cursor.x - w as isize + 1;
+        }
+
+        if self.scroll == old_scroll {
+            PaneCommand::DoNothing
+        } else {
+            PaneCommand::RerenderMe
         }
     }
 
-    // TODO: wrong
-    fn warp_cursor(&mut self, x: u16, y: u16) {
-        let scroll         = self.scroll();
-        let Some(ref file) = self.file.as_ref().cloned() else { return; };
+    // TODO: merge cursors (could make an outside function, and its relevant in other places too)
+    fn warp_cursor(&mut self, x: u16, y: u16) -> PaneCommand {
+        let old_cursor = self.file.cursors[0].clone();
 
         let y = {
-            let line_count = self.files[file].lines.len() as isize;
-            let file       = &mut self.files.get_mut(file).unwrap();
+            let line_count = self.file.lines.len() as isize;
 
-            file.cursors.drain(1..);
+            self.file.cursors.drain(1..);
 
-            let cursor = &mut file.cursors[0];
+            let cursor = &mut self.file.cursors[0];
 
-            cursor.y = y as isize + scroll.y;
-            cursor.x = x as isize + scroll.x;
+            cursor.y = y as isize + self.scroll.y;
+            cursor.x = x as isize + self.scroll.x;
 
             cursor.y.to_min_with(line_count - 1);
             cursor.y as usize
         };
 
-        let line_len = self.files[file].lines[y].utf8_len();
-        let cursor   = &mut self.files.get_mut(file).unwrap().cursors[0];
+        let line_len = self.file.lines[y].utf8_len();
+        let cursor   = &mut self.file.cursors[0];
 
         cursor.x.to_min_with(line_len);
-        cursor.last_x = x as isize + scroll.x;
+        cursor.last_x = x as isize + self.scroll.x;
+
+        if *cursor == old_cursor {
+            PaneCommand::DoNothing
+        } else {
+            PaneCommand::RerenderMe
+        }
     }
 }
 
-impl View for Editing {
-    fn any          (&mut self) -> &mut dyn std::any::Any { self                    }
-    fn name         (         ) ->          String        { String::from("editing") }
-    fn view_data    (&    self) -> &        ViewData      { &    self.view_data     }
-    fn view_data_mut(&mut self) -> &mut     ViewData      { &mut self.view_data     }
+impl PaneView for Editing {
+    fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter) -> StyledPrinter {
+        let i = i + self.scroll.y as usize;
 
-    fn print_line(&mut self, editor: &mut Editor, buffer: &mut String, _loop_i: usize, scrolled_i: usize) {
-        let Some(file) = self.file.as_ref().cloned() else {
-            buffer.push_str(&format!(
-                "{}{}",
-                editor.theme.backgrounds.primary.disabled,
-                " ".repeat(self.size().x as usize)
-            ));
+        if i < self.file.lines.len() {
+            let x = self.scroll.x;
+            let y = i as isize;
 
-            return;
-        };
-
-        if scrolled_i < self.files[&file].lines.len() {
-            let x = self.scroll().x;
-            let y = scrolled_i as isize;
-
-            let line         = &self.files[&file].lines[y as usize];
-            let visible_line = line.utf8_range(x, x + self.size().x);
-            let cursor_line  = y == self.files[&file].cursors[0].y;
+            let line         = &self.file.lines[y as usize];
+            let visible_line = line.utf8_range(x, x + w as isize);
+            let cursor_line  = y == self.file.cursors[0].y;
 
             let style = if cursor_line {
-                let (vx, vy)  = self.cursor_visible_relative_position(&file);
-                editor.cursor = Some((self.position().x + vx, self.position().y + vy));
-
-                (&editor.theme.backgrounds.primary.active, &editor.theme.foreground.active)
+                (ansi::black().bright(), ansi::white().bright())
             } else {
-                (&editor.theme.backgrounds.primary.normal, &editor.theme.foreground.normal)
+                (ansi::black(), ansi::white())
             };
 
-            buffer.push_str(&format!(
-                "{}{}{visible_line}{}",
-                style.0,
-                style.1,
-                " ".repeat((self.size().x - visible_line.utf8_len()).max(0) as usize)
-            ));
+            sp
+                .push_bg(style.0)
+                .fg(style.1, format!(
+                    "{visible_line}{}",
+                    " ".repeat((w as isize - visible_line.utf8_len()).max(0) as usize)
+                ))
         } else {
-            buffer.push_str(&format!(
-                "{}{}",
-                editor.theme.backgrounds.primary.disabled,
-                " ".repeat(self.size().x as usize)
-            ));
+            sp.bg(ansi::yellow(), " ".repeat(w as usize))
         }
-
-        /*
-        for i in 0..self.size().y {
-            if y < self.files[&file].lines.len() as isize {
-                // TODO: this can be simplified a lot
-                if !cursor_line && line.utf8_len() > self.scroll().x && line.ends_with(' ') {
-                    let line_len = line.utf8_len() as usize;
-                    let count    = line.rfind(|ch| ch != ' ')
-                        .map(|n| line_len - n - 1)
-                        .unwrap_or(line_len);
-
-                    let start = (line_len - count) as isize;
-                    if start < self.scroll().x + self.size().x {
-                        let real_start    = self.position().x + 1 + start - self.scroll().x;
-                        let left_overflow = (real_start - self.position().x - 1).min(0);
-
-                        write!(
-                            editor.stdout,
-                            "{}{}{}",
-                            bcursor::MoveToColumn((real_start - left_overflow) as u16),
-                            editor.theme.special.error,
-                            " ".repeat(
-                                (
-                                    count.min((self.size().x - (start - self.scroll().x)) as usize) as isize
-                                    -
-                                    (-left_overflow)
-                                ) as usize
-                            )
-                        ).unwrap();
-                    }
-                }
-
-                if self.scroll().x > 0 {
-                    write!(
-                        editor.stdout,
-                        "{}{}<",
-                        bcursor::MoveToColumn((self.position().x + 1) as u16),
-                        editor.theme.special.overflow
-                    ).unwrap();
-                }
-
-                if line.utf8_len() - self.scroll().x - self.size().x > 0 {
-                    write!(
-                        editor.stdout,
-                        "{}{}>",
-                        bcursor::MoveToColumn((self.position().x + self.size().x) as u16),
-                        editor.theme.special.overflow
-                    ).unwrap();
-                }
-            }
-        }
-        */
     }
 
-    fn handle_event(&mut self, editor: &mut Editor, event: Event) {
+    fn event(&mut self, event: Event, w: u16, h: u16) -> PaneCommand {
+        let w = w as usize;
+        let h = h as usize;
+
         match event {
-            Event::Key(key) => match key {
-                Key::Esc       => { self.exit           (editor); },
-                Key::Ctrl('s') => { self.save           (editor); },
-                Key::Left      => { self.left           (      ); },
-                Key::Right     => { self.right          (      ); },
-                Key::Up        => { self.up             (      ); },
-                Key::Down      => { self.down           (      ); },
-                Key::CtrlLeft  => { self.prev_word      (      ); },
-                Key::CtrlRight => { self.next_word      (      ); },
-                Key::Home      => { self.line_start     (      ); },
-                Key::End       => { self.line_end       (      ); },
-                Key::CtrlHome  => { self.file_start     (      ); },
-                Key::CtrlEnd   => { self.file_end       (      ); },
-                Key::Backspace => { self.erase_left     (      ); },
-                Key::Delete    => { self.erase_right    (      ); },
-                Key::Ctrl('h') => { self.erase_prev_word(      ); },
-                Key::AltUp     => { self.move_line_up   (      ); },
-                Key::AltDown   => { self.move_line_down (      ); },
-                Key::Char(ch)  => match ch {
-                    '\n'  => { self.newline  (     ); },
-                    '\t'  => { self.tab      (     ); },
-                    other => { self.character(other); }
+            Event::Keyboard(keyboard_event) => match keyboard_event {
+                KeyboardEvent::NoModifiers(key) => match key {
+                    Key::ArrowLeft  => self.left           (w, h),
+                    Key::ArrowRight => self.right          (w, h),
+                    Key::ArrowUp    => self.up             (w, h),
+                    Key::ArrowDown  => self.down           (w, h),
+                    Key::Home       => self.line_start     (w, h),
+                    Key::End        => self.line_end       (w, h),
+                    Key::Delete     => self.erase_right    (w, h),
+                    Key::Enter      => self.newline        (w, h),
+                    Key::Tab        => self.tab            (w, h),
+                    _               => PaneCommand::DoNothing
                 },
-                _ => ()
+                KeyboardEvent::Ctrl(key) => match key {
+                    Key::ArrowLeft  => self.prev_word      (w, h),
+                    Key::ArrowRight => self.next_word      (w, h),
+                    Key::Home       => self.file_start     (w, h),
+                    Key::End        => self.file_end       (w, h),
+                    Key::Delete     => self.erase_next_word(w, h),
+                    _               => PaneCommand::DoNothing
+                },
+                KeyboardEvent::Alt(key) => match key {
+                    Key::ArrowUp   => self.move_line_up   (w, h),
+                    Key::ArrowDown => self.move_line_down (w, h),
+                    _              => PaneCommand::DoNothing
+                },
+                KeyboardEvent::Backspace                 => self.erase_left     (    w, h),
+                KeyboardEvent::CtrlBackspace             => self.erase_prev_word(    w, h),
+                KeyboardEvent::Char(ch)                  => self.character      (ch, w, h),
+                KeyboardEvent::CtrlChar(CtrlableChar::S) => { self.save(); PaneCommand::DoNothing },
+                _                                        =>                PaneCommand::DoNothing
             },
-            Event::Mouse(MouseEvent::Press(mouse_button, x, y)) => match mouse_button {
-                MouseButton::Left      => { self.warp_cursor(x, y); },
-                MouseButton::WheelUp   => { self.scroll_dir (-1  ); },
-                MouseButton::WheelDown => { self.scroll_dir ( 1  ); },
-                _                      => ()
+            Event::Mouse(mouse_event) => match mouse_event {
+                MouseEvent::Scroll(ScrollEvent::NoModifiers(scroll_direction)) => match scroll_direction {
+                    ScrollDirection::Up  (_x, _y) => self.scroll_dir(-1),
+                    ScrollDirection::Down(_x, _y) => self.scroll_dir( 1)
+                },
+                MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(x, y))) => self.warp_cursor(x, y),
+                _                                                                         => PaneCommand::DoNothing
             },
-            Event::Unsupported(bytes) => {
-                if bytes == [27, 91, 51, 59, 53, 126] {
-                    self.erase_next_word();
-                }
-            },
-            _ => ()
+            _ => PaneCommand::DoNothing
         }
     }
 }

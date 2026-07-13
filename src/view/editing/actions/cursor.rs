@@ -1,157 +1,253 @@
-// mochou-p/text-editor/src/view/editing/actions/cursor.rs
+// mochou-p/editerm/src/view/editing/actions/cursor.rs
 
+use spliterm::PaneCommand;
 use crate::utils::{self, ToWith, Utf8, word};
 
 
 impl super::super::Editing {
-    pub fn line_start(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
+    pub fn line_start(&mut self, w: usize, h: usize) -> PaneCommand {
+        let mut dirty = false;
 
-        for cursor in &mut file.cursors {
-            cursor.x      = 0;
+        for cursor in &mut self.file.cursors {
+            if cursor.x != 0 {
+                cursor.x = 0;
+                dirty    = true
+            }
+
             cursor.last_x = 0;
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 
-    pub fn line_end(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
+    pub fn line_end(&mut self, w: usize, h: usize) -> PaneCommand {
+        let mut dirty = false;
 
-        for cursor in &mut file.cursors {
-            cursor.x      = file.lines[cursor.y as usize].utf8_len();
+        for cursor in &mut self.file.cursors {
+            let target = self.file.lines[cursor.y as usize].utf8_len();
+
+            if cursor.x != target {
+                cursor.x = target;
+                dirty    = true;
+            }
+
             cursor.last_x = isize::MAX;
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 
-    pub fn file_start(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
+    pub fn file_start(&mut self, w: usize, h: usize) -> PaneCommand {
+        let mut dirty = false;
 
-        for cursor in &mut file.cursors {
+        for cursor in &mut self.file.cursors {
             if cursor.y != 0 {
-                cursor.y            = 0;
+                cursor.y = 0;
 
                 cursor.x
                     .to_max_with(cursor.last_x)
-                    .to_min_with(file.lines[cursor.y as usize].utf8_len());
+                    .to_min_with(self.file.lines[cursor.y as usize].utf8_len());
+
+                dirty = true;
             }
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 
-    pub fn file_end(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
-        let line_count = file.lines.len() as isize;
+    pub fn file_end(&mut self, w: usize, h: usize) -> PaneCommand {
+        let     line_count = self.file.lines.len() as isize;
+        let mut dirty      = false;
 
-        for cursor in &mut file.cursors {
+        for cursor in &mut self.file.cursors {
             if cursor.y != line_count - 1 {
                 cursor.y = line_count - 1;
 
                 cursor.x
                     .to_max_with(cursor.last_x)
-                    .to_min_with(file.lines[cursor.y as usize].utf8_len());
+                    .to_min_with(self.file.lines[cursor.y as usize].utf8_len());
+
+                dirty = true
             }
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 
-    pub fn up(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
+    pub fn up(&mut self, w: usize, h: usize) -> PaneCommand {
+        let mut dirty = false;
 
-        for cursor in &mut file.cursors {
+        for cursor in &mut self.file.cursors {
             if cursor.y == 0 {
-                cursor.x      = 0;
+                if cursor.x != 0 {
+                    cursor.x = 0;
+                    dirty    = true;
+                }
+
                 cursor.last_x = 0;
             } else {
                 cursor.y -= 1;
                 cursor.x
                     .to_max_with(cursor.last_x)
-                    .to_min_with(file.lines[cursor.y as usize].utf8_len());
+                    .to_min_with(self.file.lines[cursor.y as usize].utf8_len());
+
+                dirty = true;
             }
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 
-    pub fn down(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
+    pub fn down(&mut self, w: usize, h: usize) -> PaneCommand {
+        let mut dirty = false;
 
-        for cursor in &mut file.cursors {
-            if cursor.y == (file.lines.len() - 1) as isize {
-                cursor.x      = file.lines[cursor.y as usize].utf8_len();
+        for cursor in &mut self.file.cursors {
+            if cursor.y == (self.file.lines.len() - 1) as isize {
+                let target = self.file.lines[cursor.y as usize].utf8_len();
+
+                if cursor.x != target {
+                    cursor.x = target;
+                    dirty    = true;
+                }
+
                 cursor.last_x = cursor.x;
             } else {
                 cursor.y += 1;
                 cursor.x
                     .to_max_with(cursor.last_x)
-                    .to_min_with(file.lines[cursor.y as usize].utf8_len());
+                    .to_min_with(self.file.lines[cursor.y as usize].utf8_len());
+
+                dirty = true;
             }
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 
-    pub fn left(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
+    pub fn left(&mut self, w: usize, h: usize) -> PaneCommand {
+        let mut dirty = false;
 
-        for cursor in &mut file.cursors {
+        for cursor in &mut self.file.cursors {
             if cursor.x == 0 {
                 if cursor.y != 0 {
                     cursor.y -= 1;
-                    cursor.x  = file.lines[cursor.y as usize].utf8_len();
+                    cursor.x  = self.file.lines[cursor.y as usize].utf8_len();
+                    dirty     = true;
                 }
             } else {
                 cursor.x -= 1;
+                dirty     = true;
             }
 
             cursor.last_x = cursor.x;
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 
-    pub fn right(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
+    pub fn right(&mut self, w: usize, h: usize) -> PaneCommand {
+        let mut dirty = false;
 
-        for cursor in &mut file.cursors {
-            if cursor.x == file.lines[cursor.y as usize].utf8_len() {
-                if cursor.y != (file.lines.len() - 1) as isize {
+        for cursor in &mut self.file.cursors {
+            if cursor.x == self.file.lines[cursor.y as usize].utf8_len() {
+                if cursor.y != (self.file.lines.len() - 1) as isize {
                     cursor.x  = 0;
                     cursor.y += 1;
+                    dirty     = true;
                 }
             } else {
                 cursor.x += 1;
+                dirty     = true;
             }
 
             cursor.last_x = cursor.x;
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 
-    pub fn prev_word(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
+    pub fn prev_word(&mut self, w: usize, h: usize) -> PaneCommand {
+        let mut dirty = false;
 
-        for cursor in &mut file.cursors {
+        for cursor in &mut self.file.cursors {
+            // TODO: wait shouldnt this be a continue, and take out inner dirt
             if cursor.x == 0 {
-                self.left();
-                return;
+                return self.left(w, h);
             }
 
-            let line  = &file.lines[cursor.y as usize];
+            let line  = &self.file.lines[cursor.y as usize];
             let start = line.chars().nth((cursor.x - 1) as usize).unwrap();
 
             let end = if utils::is_alphanumericx(start) {
@@ -162,21 +258,30 @@ impl super::super::Editing {
 
             cursor.x      = end.map(|i| i+1).unwrap_or(0);
             cursor.last_x = cursor.x;
+            dirty         = true;
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 
-    pub fn next_word(&mut self) {
-        let Some(file) = self.file.as_ref() else { return; };
-        let      file  = self.files.get_mut(file).unwrap();
+    pub fn next_word(&mut self, w: usize, h: usize) -> PaneCommand {
+        let mut dirty = false;
 
-        for cursor in &mut file.cursors {
-            let line = &file.lines[cursor.y as usize];
+        for cursor in &mut self.file.cursors {
+            let line = &self.file.lines[cursor.y as usize];
 
+            // TODO: wait shouldnt this be a continue, and take out inner dirt
             if cursor.x == line.utf8_len() {
-                self.right();
-                return;
+                return self.right(w, h);
             }
 
             let start = line.chars().nth(cursor.x as usize).unwrap();
@@ -187,10 +292,20 @@ impl super::super::Editing {
                 word::to_right(line, cursor.x, |ch| ch != start)
             };
 
-            cursor.x      = end.unwrap_or(file.lines[cursor.y as usize].utf8_len());
+            cursor.x      = end.unwrap_or(self.file.lines[cursor.y as usize].utf8_len());
             cursor.last_x = cursor.x;
+            dirty         = true;
         }
 
-        self.snap_to_cursor();
+        match self.snap_to_cursor(w, h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 }

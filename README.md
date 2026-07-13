@@ -1,5 +1,5 @@
-<!-- mochou-p/text-editor/README.md -->
+<!-- mochou-p/editerm/README.md -->
 
-# text editor
+# editerm
 a based text-based text editor  
 (currently unix only)

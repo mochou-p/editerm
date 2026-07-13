@@ -1,23 +1,16 @@
-// mochou-p/text-editor/src/main.rs
+// mochou-p/editerm/src/main.rs
 
-mod config;
-mod insert_set;
-mod ivec2;
+//mod config;
 mod utils;
 mod view;
 
-use std::collections::HashMap;
-use std::io::{self, Stdout, Write as _};
 use std::panic::{set_hook, take_hook, catch_unwind, AssertUnwindSafe};
 use std::sync::OnceLock;
-use termion::event::{Event, MouseEvent, MouseButton};
-use termion::input::{MouseTerminal, TermRead as _};
-use termion::raw::{RawTerminal, IntoRawMode as _};
-use betterm::{clear, color, cursor, screen};
-use config::Theme;
-use view::{View, Browsing, Editing, Files};
-
-pub use {insert_set::InsertSet, ivec2::Ivec2};
+use spliterm::Screen;
+use spliterm::betterm;
+use betterm::{reset, color::{ansi, fg}};
+use betterm::terminal::{RawTerminal, Event, KeyboardEvent, Key, size};
+use view::Browsing;
 
 
 static PANIC_LOCATION: OnceLock<String> = OnceLock::new();
@@ -31,73 +24,40 @@ fn main() {
     if !was_ok {
         eprintln!(
             "{}{} crashed! panic info:{}\n{}{}",
-            color::FG_RED,
+            fg(ansi::red().bright()),
             env!("CARGO_CRATE_NAME"),
-            color::UNSET_FG,
+            reset::fg(),
             PANIC_LOCATION.get().unwrap_or(&String::new()),
-            PANIC_PAYLOAD.get().unwrap()
+            PANIC_PAYLOAD .get().unwrap()
         );
     }
 }
 
 struct Editor {
-    exit:   bool,
-    stdout: MouseTerminal<RawTerminal<Stdout>>,
-    theme:  Theme,
-    cursor: Option<(isize, isize)>,
-    view:   String,
-    views:  HashMap<String, Box<dyn View>>
+    terminal: RawTerminal,
+    screen:   Screen
 }
 
 #[derive(Default, Clone)]
-struct Cursor {
+pub struct Cursor {
     last_x: isize,
     x:      isize,
     y:      isize
 }
 
+impl PartialEq<Self> for Cursor {
+    fn eq(&self, other: &Self) -> bool {
+        self.x == other.x && self.y == other.y
+    }
+}
+
 impl Editor {
     fn new() -> Self {
-        Self {
-            exit:   false,
-            // NOTE: lock?
-            stdout: MouseTerminal::from(io::stdout().into_raw_mode().unwrap()),
-            theme:  Theme::default(),
-            cursor: None,
-            view:   Browsing::name(),
-            views:  HashMap::new()
-        }
-    }
+        let terminal        = RawTerminal::new(std::io::stdin(), std::io::stdout());
+        let (width, height) = size(terminal.output.as_raw_fd());
+        let screen          = Screen::new(0, 0, width, height, Browsing::new());
 
-    fn initialise(&mut self) {
-        write!(
-            self.stdout,
-            "{}{}{}",
-            cursor::HIDE,
-            screen::ENTER_ALTERNATE,
-            clear::WHOLE_SCREEN
-        ).unwrap();
-
-        let editing = Editing::new();
-        self.views.insert(Editing::name(), Box::new(editing));
-
-        let browsing = Browsing::new(self);
-        self.views.insert(Browsing::name(), Box::new(browsing));
-
-        let files = Files::new(self);
-        self.views.insert(Files::name(), Box::new(files));
-    }
-
-    fn shutdown(&mut self) {
-        write!(
-            self.stdout,
-            "{}{}{}",
-            screen::LEAVE_ALTERNATE,
-            cursor::SHOW,
-            betterm::RESET_ALL
-        ).unwrap();
-
-        self.stdout.flush().unwrap();
+        Self { terminal, screen }
     }
 
     fn run(mut self) -> bool {
@@ -106,9 +66,7 @@ impl Editor {
                 let _ = PANIC_LOCATION.set(
                     format!(
                         "{}:{}:{}:\n",
-                        location.file(),
-                        location.line(),
-                        location.column()
+                        location.file(), location.line(), location.column()
                     )
                 );
             }
@@ -127,123 +85,27 @@ impl Editor {
         }));
 
         let result = catch_unwind(AssertUnwindSafe(|| {
-            self.initialise();
             self.inner_run();
         }));
 
         let _ = take_hook();
-        self.shutdown();
 
         result.is_ok()
     }
 
-    fn try_update_focus(&mut self, event: &mut Event) {
-        let Event::Mouse(MouseEvent::Press(MouseButton::Left, x, y)) = event else {
-            return;
-        };
-
-        *x -= 1;
-        *y -= 1;
-
-        for name in self.views.keys() {
-            let view = &self.views[name];
-
-            let xy1 = view.position();
-            let xy2 = xy1 + view.size() - Ivec2::ONE;
-
-            if *x >= xy1.x as u16 && *y >= xy1.y as u16 && *x <= xy2.x as u16 && *y <= xy2.y as u16 {
-                *x        -= xy1.x as u16;
-                *y        -= xy1.y as u16;
-                self.view  = name.clone();
-                return;
-            }
-        }
-    }
-
-    fn handle_event(&mut self, event: Event) {
-        let     name = self.view.clone();
-        let mut view = self.views.remove(&name).unwrap();
-
-        view.handle_event(self, event);
-
-        self.views.insert(name, view);
-    }
-
-    fn reprint_views(&mut self, keys: &[String], buffer: &mut String) {
-        for key in keys {
-            let mut view = self.views.remove(key).unwrap();
-
-            for i in 0..view.size().y {
-                buffer.clear();
-                view.print_line(self, buffer, i as usize, (i + view.scroll().y) as usize);
-
-                // TODO: cut printed width of String to size.x here somehow (+background fill)
-                write!(
-                    self.stdout,
-                    "{}{buffer}",
-                    cursor::MoveToColumnAndRow(
-                        (view.position().x + 1)     as u16,
-                        (view.position().y + 1 + i) as u16
-                    )
-                ).unwrap();
-            }
-
-            self.views.insert(String::from(key), view);
-        }
-
-        if let Some((x, y)) = self.cursor.take() {
-            write!(
-                self.stdout,
-                "{}{}",
-                cursor::SHOW,
-                cursor::MoveToColumnAndRow(x as u16, y as u16)
-            ).unwrap();
-        } else {
-            write!(self.stdout, "{}", cursor::HIDE).unwrap();
-        }
-
-        self.stdout.flush().unwrap();
-    }
-
     fn inner_run(&mut self) {
-        let     keys   = self.views.keys().cloned().collect::<Vec<String>>();
-        let mut buffer = String::with_capacity(1024);
+        self.screen.render_all(&mut self.terminal);
 
-        self.reprint_views(&keys, &mut buffer);
-
-        let stdin  = io::stdin();
-        let handle = stdin.lock();
-
-        for event in handle.events() {
-            let mut event = event.unwrap();
-
-            self.try_update_focus(&mut event);
-            self.handle_event(event);
-
-            if self.exit {
-                break;
+        loop {
+            match self.terminal.blocking_event() {
+                Event::Keyboard(KeyboardEvent::NoModifiers(Key::Escape)) => {
+                    break;
+                },
+                other => {
+                    self.screen.event(other, &mut self.terminal);
+                    // TODO: show/hide cursor
+                }
             }
-
-            self.reprint_views(&keys, &mut buffer);
         }
-    }
-
-    fn view<T: View + 'static, R>(&mut self, f: impl Fn(&mut Self, &mut T) -> R) -> R {
-        let name = T::name();
-
-        let mut view = self.views
-            .remove(&name)
-            .unwrap();
-
-        let t = view
-            .any()
-            .downcast_mut::<T>()
-            .unwrap();
-
-        let result = f(self, t);
-
-        self.views.insert(name, view);
-
-        result
     }
 }

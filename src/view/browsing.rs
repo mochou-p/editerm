@@ -1,22 +1,25 @@
-// mochou-p/text-editor/src/view/browsing.rs
+// mochou-p/editerm/src/view/browsing.rs
 
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::path::PathBuf;
-use termion::event::{Event, Key, MouseEvent, MouseButton};
-use super::{View, ViewData};
-use super::editing::Editing;
-use crate::Editor;
+use std::path::{Path, PathBuf};
+use spliterm::{PaneView, PaneCommand};
+use spliterm::betterm;
+use betterm::color::{ansi, AnsiColor};
+use betterm::styled_printer::StyledPrinter;
+use betterm::terminal::{Event, KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton};
+use betterm::libc;
+use super::Editing;
 
 
 pub struct Browsing {
-    view_data:   ViewData,
     current_dir: PathBuf,
     focused:     usize,
     focuses:     HashMap<PathBuf, usize>,
     parent:      Option<BrowserEntry>,
     dirs:        Vec<BrowserEntry>,
-    files:       Vec<BrowserEntry>
+    files:       Vec<BrowserEntry>,
+    scroll_y:    usize
 }
 
 struct BrowserEntry {
@@ -42,22 +45,17 @@ impl From<PathBuf> for BrowserEntry {
 }
 
 impl Browsing {
-    pub fn new(editor: &mut Editor) -> Self {
-        let view_data             = ViewData::left_of::<Editing>(editor, 24);
+    pub fn new() -> Self {
         let current_dir           = std::env::current_dir().unwrap();
         let (parent, dirs, files) = Self::load(&current_dir);
         let focused               = 0;
         let focuses               = HashMap::from([(current_dir.clone(), focused)]);
 
-        Self { view_data, current_dir, focused, focuses, parent, dirs, files }
+        Self { current_dir, focused, focuses, parent, dirs, files, scroll_y: 0 }
     }
 
-    fn load(path: &PathBuf) -> (Option<BrowserEntry>, Vec<BrowserEntry>, Vec<BrowserEntry>) {
-        let parent = if let Some(parent) = path.parent() {
-            Some(BrowserEntry::from(parent.to_path_buf()))
-        } else {
-            None
-        };
+    fn load(path: &Path) -> (Option<BrowserEntry>, Vec<BrowserEntry>, Vec<BrowserEntry>) {
+        let parent = path.parent().map(|parent| BrowserEntry::from(parent.to_path_buf()));
 
         let mut dirs  = Vec::new();
         let mut files = Vec::new();
@@ -82,20 +80,26 @@ impl Browsing {
         self.parent.is_some() as usize + self.dirs.len() + self.files.len()
     }
 
-    fn up(&mut self) {
+    fn up(&mut self) -> PaneCommand {
         if self.focused != 0 {
             self.focused -= 1;
+            PaneCommand::RerenderMe
+        } else {
+            PaneCommand::DoNothing
         }
     }
 
-    fn down(&mut self) {
+    fn down(&mut self) -> PaneCommand {
         if self.focused != self.dirs.len() + self.files.len() - self.parent.is_none() as usize {
             self.focused += 1;
+            PaneCommand::RerenderMe
+        } else {
+            PaneCommand::DoNothing
         }
     }
 
-    fn go_out(&mut self) {
-        let Some(parent) = self.parent.take() else { return; };
+    fn go_out(&mut self) -> PaneCommand {
+        let Some(parent) = self.parent.take() else { return PaneCommand::DoNothing; };
 
         let old_dir = self.current_dir.clone();
         self.focuses.insert(old_dir.clone(), self.focused);
@@ -114,15 +118,16 @@ impl Browsing {
                 },
                 |i| *i
             );
+
+        PaneCommand::RerenderMe
     }
 
-    fn go_in(&mut self, editor: &mut Editor) {
+    fn go_in(&mut self) -> PaneCommand {
         let mut i = self.focused;
 
         if self.parent.is_some() {
             if i == 0 {
-                self.go_out();
-                return;
+                return self.go_out();
             }
 
             i -= 1;
@@ -135,39 +140,39 @@ impl Browsing {
             (self.parent, self.dirs, self.files) = Self::load(&self.current_dir);
 
             self.focused = self.focuses.get(&self.current_dir).map_or_else(|| 0, |i| *i);
+
+            PaneCommand::RerenderMe
         } else {
             i -= self.dirs.len() + self.parent.is_some() as usize - 1;
-            editor.view::<Editing, ()>(|editor, view| view.open_file_from_browser(editor, self.files[i].path.clone()));
+
+            let editing = Editing::new(self.files[i].path.clone());
+            PaneCommand::ReplaceMe(Box::new(editing))
         }
     }
 
     fn print_entry(
         &self,
-        editor:    &Editor,
-        buffer:    &mut String,
-        focused:   bool,
-        entry:     &BrowserEntry,
-        is_parent: bool,
-        prefix:    &str,
-        suffix:    &str
-    ) {
-        buffer.push_str(
-            if focused {
-                &editor.theme.backgrounds.secondary.active
-            } else {
-                &editor.theme.backgrounds.secondary.normal
-            }
-        );
+        mut sp:        StyledPrinter,
+            focused:   bool,
+            entry:     &BrowserEntry,
+            is_parent: bool,
+            prefix:    Option<AnsiColor>,
+            suffix:    &str,
+            w:         u16
+    ) -> StyledPrinter {
+        if focused {
+            sp = sp.push_bg(ansi::black().bright())
+        } else {
+            sp = sp.push_bg(ansi::black())
+        }
 
-        let mut width = self.size().x;
+        let mut width = w;
 
         if width > 4 {
-            buffer.push_str(&format!(
-                "{}r{}w{}x ",
-                if entry.r { &editor.theme.ansi.green } else { &editor.theme.ansi.red },
-                if entry.w { &editor.theme.ansi.green } else { &editor.theme.ansi.red },
-                if entry.x { &editor.theme.ansi.green } else { &editor.theme.ansi.red }
-            ));
+            sp = sp.fg(if entry.r { ansi::green() } else { ansi::red() }, "r");
+            sp = sp.fg(if entry.w { ansi::green() } else { ansi::red() }, "w");
+            sp = sp.fg(if entry.x { ansi::green() } else { ansi::red() }, "x");
+            sp = sp.text(" ");
 
             width -= 4;
         }
@@ -178,82 +183,80 @@ impl Browsing {
             entry.path.file_name().unwrap().to_string_lossy().to_string()
         };
 
-        let text         = format!("{path}{suffix}");
+        let         text = format!("{path}{suffix}");
         let visible_text = &text[..(width as usize).min(text.len())];
+        let   final_text = format!("{visible_text}{}", " ".repeat(w as usize - visible_text.len() - 4));
 
-        buffer.push_str(&format!(
-            "{prefix}{visible_text}{}",
-            " ".repeat(self.size().x as usize - visible_text.len() - 4)
-        ));
+        if let Some(color) = prefix {
+            sp.fg(color, final_text)
+        } else {
+            sp = sp.reset_fg();
+            sp.text(final_text)
+        }
     }
 
-    fn print_dir(&self, editor: &Editor, buffer: &mut String, focused: bool, i: usize) {
-        self.print_entry(editor, buffer, focused, &self.dirs[i], false, &editor.theme.ansi.blue, "/");
+    fn print_dir(&self, sp: StyledPrinter, focused: bool, i: usize, w: u16) -> StyledPrinter {
+        self.print_entry(sp, focused, &self.dirs[i], false, Some(ansi::blue()), "/", w)
     }
 
-    fn print_file(&self, editor: &Editor, buffer: &mut String, focused: bool, i: usize) {
-        self.print_entry(editor, buffer, focused, &self.files[i], false, &editor.theme.foreground.normal, "");
+    fn print_file(&self, sp: StyledPrinter, focused: bool, i: usize, w: u16) -> StyledPrinter {
+        self.print_entry(sp, focused, &self.files[i], false, None, "", w)
     }
 
-    fn print_empty(&mut self, editor: &Editor, buffer: &mut String) {
-        buffer.push_str(&format!(
-            "{}{}",
-            &editor.theme.backgrounds.secondary.disabled,
-            " ".repeat(self.size().x as usize)
-        ));
+    fn print_empty(&self, sp: StyledPrinter, w: u16) -> StyledPrinter {
+        sp.bg(ansi::red().bright(), " ".repeat(w as usize))
     }
 }
 
-impl View for Browsing {
-    fn any          (&mut self) -> &mut dyn std::any::Any { self                     }
-    fn name         (         ) ->          String        { String::from("browsing") }
-    fn view_data    (&    self) -> &        ViewData      { &    self.view_data      }
-    fn view_data_mut(&mut self) -> &mut     ViewData      { &mut self.view_data      }
+impl PaneView for Browsing {
+    fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter) -> StyledPrinter {
+        let mut i = i + self.scroll_y;
 
-    fn print_line(&mut self, editor: &mut Editor, buffer: &mut String, _loop_i: usize, mut scrolled_i: usize) {
         if let Some(parent) = self.parent.as_ref() {
-            if scrolled_i == 0 {
-                self.print_entry(editor, buffer, self.focused == 0, parent, true, &editor.theme.ansi.blue, "/");
-                return;
+            if i == 0 {
+                return self.print_entry(sp, self.focused == 0, parent, true, Some(ansi::blue()), "/", w);
             } else {
-                scrolled_i -= 1;
+                i -= 1;
             }
         }
 
-        let focused = self.focused == scrolled_i + self.parent.is_some() as usize;
+        let focused = self.focused == i + self.parent.is_some() as usize;
 
-        if scrolled_i < self.dirs.len() {
-            self.print_dir(editor, buffer, focused, scrolled_i);
-            return;
+        if i < self.dirs.len() {
+            return self.print_dir(sp, focused, i, w);
         }
-        scrolled_i -= self.dirs.len();
+        i -= self.dirs.len();
 
-        if scrolled_i < self.files.len() {
-            self.print_file(editor, buffer, focused, scrolled_i);
-            return;
+        if i < self.files.len() {
+            return self.print_file(sp, focused, i, w);
         }
 
-        self.print_empty(editor, buffer);
+        self.print_empty(sp, w)
     }
 
-    fn handle_event(&mut self, editor: &mut Editor, event: Event) {
+    fn event(&mut self, event: Event, _w: u16, _h: u16) -> PaneCommand {
         match event {
-            Event::Key(key) => match key {
-                Key::Up                      => { self.up()          },
-                Key::Down                    => { self.down()        },
-                Key::Left  | Key::Backspace  => { self.go_out()      },
-                Key::Right | Key::Char('\n') => { self.go_in(editor) },
-                _                            => ()
+            Event::Keyboard(KeyboardEvent::NoModifiers(key)) => match key {
+                Key::ArrowUp                 => self.up(),
+                Key::ArrowDown               => self.down(),
+                Key::ArrowLeft               => self.go_out(),
+                Key::ArrowRight | Key::Enter => self.go_in(),
+                _                            => PaneCommand::DoNothing
             },
-            Event::Mouse(MouseEvent::Press(mouse_button, _x, y)) => {
-                if matches!(mouse_button, MouseButton::Left) {
-                    let y = y as usize;
-                    if y < self.entry_count() {
-                        self.focused = y as usize;
-                    }
+            Event::Keyboard(KeyboardEvent::Backspace) => {
+                self.go_out()
+            },
+            Event::Mouse(MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(_x, y)))) => {
+                let y = y as usize;
+
+                if y < self.entry_count() {
+                    self.focused = y;
+                    self.go_in()
+                } else {
+                    PaneCommand::DoNothing
                 }
             },
-            _ => ()
+            _ => PaneCommand::DoNothing
         }
     }
 }

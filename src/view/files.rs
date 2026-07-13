@@ -1,4 +1,4 @@
-// mochou-p/text-editor/src/view/files.rs
+// mochou-p/editerm/src/view/files.rs
 
 use std::path::PathBuf;
 use termion::event::{Event, MouseEvent, MouseButton};
@@ -10,7 +10,6 @@ use crate::{Editor, InsertSet};
 pub struct Files {
     view_data: ViewData,
     file:      Option<PathBuf>,
-    // TODO: keep insertion order
     files:     InsertSet<PathBuf>
 }
 
@@ -59,7 +58,7 @@ impl View for Files {
                 &editor.theme.backgrounds.primary.disabled
             };
 
-            buffer.push_str(&format!("{color}{text}"));
+            buffer.push_str(&format!("{color}{}{text}", &editor.theme.foregrounds.primary.normal));
         }
 
         buffer.push_str(&format!(

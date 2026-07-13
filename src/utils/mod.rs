@@ -1,4 +1,4 @@
-// mochou-p/text-editor/src/utils/mod.rs
+// mochou-p/editerm/src/utils/mod.rs
 
     mod to_with;
     mod utf8;
