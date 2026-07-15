@@ -4,12 +4,14 @@
 mod utils;
 mod view;
 
+use std::io::Write as _;
 use std::panic::{set_hook, take_hook, catch_unwind, AssertUnwindSafe};
 use std::sync::OnceLock;
 use spliterm::Screen;
 use spliterm::betterm;
+use betterm::cursor;
 use betterm::{reset, color::{ansi, fg}};
-use betterm::terminal::{RawTerminal, Event, KeyboardEvent, Key, size};
+use betterm::terminal::{CtrlableChar, RawTerminal, Event, KeyboardEvent, Key, size};
 use view::Browsing;
 
 
@@ -35,7 +37,14 @@ fn main() {
 
 struct Editor {
     terminal: RawTerminal,
-    screen:   Screen
+    screen:   Screen<ViewEvent>
+}
+
+#[derive(Default)]
+pub enum ViewEvent {
+    #[default]
+    DoNothing,
+    DrawCursor(u16, u16)
 }
 
 #[derive(Default, Clone)]
@@ -95,17 +104,43 @@ impl Editor {
 
     fn inner_run(&mut self) {
         self.screen.render_all(&mut self.terminal);
+        self.terminal.flush().unwrap();
 
         loop {
-            match self.terminal.blocking_event() {
-                Event::Keyboard(KeyboardEvent::NoModifiers(Key::Escape)) => {
-                    break;
-                },
-                other => {
-                    self.screen.event(other, &mut self.terminal);
-                    // TODO: show/hide cursor
+            let event = self.terminal.blocking_event();
+
+            if let Event::Keyboard(keyboard_event) = &event {
+                match keyboard_event {
+                    KeyboardEvent::NoModifiers(Key::Escape) => {
+                        break;
+                    },
+                    KeyboardEvent::CtrlChar(CtrlableChar::O) => {
+                        self.screen.panes.vertical_split(Browsing::new());
+                        self.screen.render_all(&mut self.terminal);
+                        continue;
+                    },
+                    _ => ()
                 }
             }
+
+            if let Some(ViewEvent::DrawCursor(x, y)) = self.screen.event(event, &mut self.terminal) {
+                self.terminal.write_all(
+                    format!(
+                        "{}{}",
+                        cursor::goto(
+                            x + 1 + self.screen.panes.focused_x().unwrap(),
+                            y + 1 + self.screen.panes.focused_y().unwrap()
+                        ),
+                        "\x1b[?25h", // show cursor
+                    ).as_bytes()
+                ).unwrap();
+            } else {
+                self.terminal.write_all(
+                    b"\x1b[?25l" // hide cursor
+                ).unwrap();
+            }
+
+            self.terminal.flush().unwrap();
         }
     }
 }

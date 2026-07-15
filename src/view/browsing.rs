@@ -3,13 +3,14 @@
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
-use spliterm::{PaneView, PaneCommand};
+use spliterm::{PaneView, PaneCommand, Event, PaneEvent};
 use spliterm::betterm;
-use betterm::color::{ansi, AnsiColor};
+use betterm::color::rgb;
 use betterm::styled_printer::StyledPrinter;
-use betterm::terminal::{Event, KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton};
+use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton};
 use betterm::libc;
 use super::Editing;
+use crate::ViewEvent;
 
 
 pub struct Browsing {
@@ -19,7 +20,8 @@ pub struct Browsing {
     parent:      Option<BrowserEntry>,
     dirs:        Vec<BrowserEntry>,
     files:       Vec<BrowserEntry>,
-    scroll_y:    usize
+    scroll_y:    usize,
+    pane_focus:  bool
 }
 
 struct BrowserEntry {
@@ -51,7 +53,7 @@ impl Browsing {
         let focused               = 0;
         let focuses               = HashMap::from([(current_dir.clone(), focused)]);
 
-        Self { current_dir, focused, focuses, parent, dirs, files, scroll_y: 0 }
+        Self { current_dir, focused, focuses, parent, dirs, files, scroll_y: 0, pane_focus: true }
     }
 
     fn load(path: &Path) -> (Option<BrowserEntry>, Vec<BrowserEntry>, Vec<BrowserEntry>) {
@@ -80,7 +82,7 @@ impl Browsing {
         self.parent.is_some() as usize + self.dirs.len() + self.files.len()
     }
 
-    fn up(&mut self) -> PaneCommand {
+    fn up(&mut self) -> PaneCommand<ViewEvent> {
         if self.focused != 0 {
             self.focused -= 1;
             PaneCommand::RerenderMe
@@ -89,7 +91,7 @@ impl Browsing {
         }
     }
 
-    fn down(&mut self) -> PaneCommand {
+    fn down(&mut self) -> PaneCommand<ViewEvent> {
         if self.focused != self.dirs.len() + self.files.len() - self.parent.is_none() as usize {
             self.focused += 1;
             PaneCommand::RerenderMe
@@ -98,7 +100,7 @@ impl Browsing {
         }
     }
 
-    fn go_out(&mut self) -> PaneCommand {
+    fn go_out(&mut self) -> PaneCommand<ViewEvent> {
         let Some(parent) = self.parent.take() else { return PaneCommand::DoNothing; };
 
         let old_dir = self.current_dir.clone();
@@ -122,7 +124,7 @@ impl Browsing {
         PaneCommand::RerenderMe
     }
 
-    fn go_in(&mut self) -> PaneCommand {
+    fn go_in(&mut self) -> PaneCommand<ViewEvent> {
         let mut i = self.focused;
 
         if self.parent.is_some() {
@@ -156,22 +158,25 @@ impl Browsing {
             focused:   bool,
             entry:     &BrowserEntry,
             is_parent: bool,
-            prefix:    Option<AnsiColor>,
+            is_dir:    bool,
             suffix:    &str,
             w:         u16
     ) -> StyledPrinter {
         if focused {
-            sp = sp.push_bg(ansi::black().bright())
+            sp = sp.push_bg(if self.pane_focus { rgb(0x40, 0x40, 0x40) } else { rgb(0x24, 0x24, 0x24) })
         } else {
-            sp = sp.push_bg(ansi::black())
+            sp = sp.push_bg(if self.pane_focus { rgb(0x2B, 0x2B, 0x2B) } else { rgb(0x17, 0x17, 0x17) })
         }
 
         let mut width = w;
 
         if width > 4 {
-            sp = sp.fg(if entry.r { ansi::green() } else { ansi::red() }, "r");
-            sp = sp.fg(if entry.w { ansi::green() } else { ansi::red() }, "w");
-            sp = sp.fg(if entry.x { ansi::green() } else { ansi::red() }, "x");
+            let green = if self.pane_focus { rgb(0x9E, 0xF5, 0x9E) } else { rgb(0x61, 0x99, 0x61) };
+            let red   = if self.pane_focus { rgb(0xFF, 0x94, 0x94) } else { rgb(0xA0, 0x5B, 0x5B) };
+
+            sp = sp.fg(if entry.r { green } else { red }, if entry.r { "r" } else { "-" });
+            sp = sp.fg(if entry.w { green } else { red }, if entry.w { "w" } else { "-" });
+            sp = sp.fg(if entry.x { green } else { red }, if entry.x { "x" } else { "-" });
             sp = sp.text(" ");
 
             width -= 4;
@@ -187,34 +192,46 @@ impl Browsing {
         let visible_text = &text[..(width as usize).min(text.len())];
         let   final_text = format!("{visible_text}{}", " ".repeat(w as usize - visible_text.len() - 4));
 
-        if let Some(color) = prefix {
-            sp.fg(color, final_text)
+        if is_dir {
+            let idk = if focused { rgb(0x94, 0xD1, 0xFF) } else { rgb(0x76, 0xA4, 0xC6) };
+            let lol = if focused { rgb(0x5B, 0x82, 0xA0) } else { rgb(0x47, 0x65, 0x7B) };
+
+            sp.fg(if self.pane_focus { idk } else { lol }, final_text)
         } else {
-            sp = sp.reset_fg();
-            sp.text(final_text)
+            let lmao = if focused { rgb(0xC9, 0xC9, 0xC9) } else { rgb(0x80, 0x80, 0x80) };
+            let rofl = if focused { rgb(0x7D, 0x7D, 0x7D) } else { rgb(0x4E, 0x4E, 0x4E) };
+
+            sp.fg(if self.pane_focus { lmao } else { rofl }, final_text)
         }
     }
 
     fn print_dir(&self, sp: StyledPrinter, focused: bool, i: usize, w: u16) -> StyledPrinter {
-        self.print_entry(sp, focused, &self.dirs[i], false, Some(ansi::blue()), "/", w)
+        self.print_entry(sp, focused, &self.dirs[i], false, true, "/", w)
     }
 
     fn print_file(&self, sp: StyledPrinter, focused: bool, i: usize, w: u16) -> StyledPrinter {
-        self.print_entry(sp, focused, &self.files[i], false, None, "", w)
+        self.print_entry(sp, focused, &self.files[i], false, false, "", w)
     }
 
     fn print_empty(&self, sp: StyledPrinter, w: u16) -> StyledPrinter {
-        sp.bg(ansi::red().bright(), " ".repeat(w as usize))
+        sp.bg(
+            if self.pane_focus {
+                rgb(0x1C, 0x1C, 0x1C)
+            } else {
+                rgb(0x0D, 0x0D, 0x0D)
+            },
+            " ".repeat(w as usize)
+        )
     }
 }
 
-impl PaneView for Browsing {
+impl PaneView<ViewEvent> for Browsing {
     fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter) -> StyledPrinter {
         let mut i = i + self.scroll_y;
 
         if let Some(parent) = self.parent.as_ref() {
             if i == 0 {
-                return self.print_entry(sp, self.focused == 0, parent, true, Some(ansi::blue()), "/", w);
+                return self.print_entry(sp, self.focused == 0, parent, true, true, "/", w);
             } else {
                 i -= 1;
             }
@@ -234,29 +251,40 @@ impl PaneView for Browsing {
         self.print_empty(sp, w)
     }
 
-    fn event(&mut self, event: Event, _w: u16, _h: u16) -> PaneCommand {
-        match event {
-            Event::Keyboard(KeyboardEvent::NoModifiers(key)) => match key {
-                Key::ArrowUp                 => self.up(),
-                Key::ArrowDown               => self.down(),
-                Key::ArrowLeft               => self.go_out(),
-                Key::ArrowRight | Key::Enter => self.go_in(),
-                _                            => PaneCommand::DoNothing
-            },
-            Event::Keyboard(KeyboardEvent::Backspace) => {
-                self.go_out()
-            },
-            Event::Mouse(MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(_x, y)))) => {
-                let y = y as usize;
+    fn event(&mut self, event: Event, _w: u16, _h: u16) -> (PaneCommand<ViewEvent>, ViewEvent) {
+        (
+            match event {
+                Event::Keyboard(KeyboardEvent::NoModifiers(key)) => match key {
+                    Key::ArrowUp                 => self.up(),
+                    Key::ArrowDown               => self.down(),
+                    Key::ArrowLeft               => self.go_out(),
+                    Key::ArrowRight | Key::Enter => self.go_in(),
+                    _                            => PaneCommand::DoNothing
+                },
+                Event::Keyboard(KeyboardEvent::Backspace) => {
+                    self.go_out()
+                },
+                Event::Mouse(MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(_x, y)))) => {
+                    let y = y as usize;
 
-                if y < self.entry_count() {
-                    self.focused = y;
-                    self.go_in()
-                } else {
-                    PaneCommand::DoNothing
-                }
+                    if y < self.entry_count() {
+                        self.focused = y;
+                        self.go_in()
+                    } else {
+                        PaneCommand::DoNothing
+                    }
+                },
+                Event::Custom(pane_event) => {
+                    match pane_event {
+                        PaneEvent::FocusGained => { self.pane_focus =  true; },
+                        PaneEvent::FocusLost   => { self.pane_focus = false; }
+                    }
+
+                    PaneCommand::RerenderMe
+                },
+                _ => PaneCommand::DoNothing
             },
-            _ => PaneCommand::DoNothing
-        }
+            ViewEvent::DoNothing
+        )
     }
 }

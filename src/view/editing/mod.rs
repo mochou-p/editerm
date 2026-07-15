@@ -3,18 +3,19 @@
 mod actions;
 
 use std::path::PathBuf;
-use spliterm::{PaneView, PaneCommand};
+use spliterm::{PaneView, PaneCommand, Event, PaneEvent};
 use spliterm::betterm;
-use betterm::{color::ansi, styled_printer::StyledPrinter};
-use betterm::terminal::{Event, KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton, CtrlableChar, ScrollEvent, ScrollDirection};
-use crate::Cursor;
+use betterm::{color::rgb, styled_printer::StyledPrinter};
+use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton, CtrlableChar, ScrollEvent, ScrollDirection};
+use crate::{Cursor, ViewEvent};
 use crate::utils::{ToWith, Utf8};
 
 
 pub struct Editing {
-    path:   PathBuf,
-    file:   File,
-    scroll: Vec2
+    path:       PathBuf,
+    file:       File,
+    scroll:     Vec2,
+    pane_focus: bool
 }
 
 pub struct File {
@@ -32,9 +33,10 @@ struct Vec2 {
 impl Editing {
     pub fn new(path: PathBuf) -> Self {
         Self {
-            file:   Self::read_file(&path),
+            file:       Self::read_file(&path),
             path,
-            scroll: Vec2 { x: 0, y: 0 }
+            scroll:     Vec2 { x: 0, y: 0 },
+            pane_focus: true
         }
     }
 
@@ -53,17 +55,16 @@ impl Editing {
         }
     }
 
-    // TODO: maybe
-    fn _cursor_visible_relative_position(&self, _file: &PathBuf) -> (isize, isize) {
+    fn cursor_visible_relative_position(&self) -> (isize, isize) {
         let cursor = &self.file.cursors[0];
 
-        let x = cursor.x + 1 - self.scroll.x;
-        let y = cursor.y + 1 - self.scroll.y;
+        let x = cursor.x - self.scroll.x;
+        let y = cursor.y - self.scroll.y;
 
         (x, y)
     }
 
-    fn snap_to_cursor(&mut self, w: usize, h: usize) -> PaneCommand {
+    fn snap_to_cursor(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
         let cursor     = self.file.cursors[0].clone();
         let old_scroll = self.scroll.clone();
 
@@ -87,7 +88,7 @@ impl Editing {
     }
 
     // TODO: merge cursors (could make an outside function, and its relevant in other places too)
-    fn warp_cursor(&mut self, x: u16, y: u16) -> PaneCommand {
+    fn warp_cursor(&mut self, x: u16, y: u16) -> PaneCommand<ViewEvent> {
         let old_cursor = self.file.cursors[0].clone();
 
         let y = {
@@ -118,7 +119,7 @@ impl Editing {
     }
 }
 
-impl PaneView for Editing {
+impl PaneView<ViewEvent> for Editing {
     fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter) -> StyledPrinter {
         let i = i + self.scroll.y as usize;
 
@@ -130,10 +131,13 @@ impl PaneView for Editing {
             let visible_line = line.utf8_range(x, x + w as isize);
             let cursor_line  = y == self.file.cursors[0].y;
 
-            let style = if cursor_line {
-                (ansi::black().bright(), ansi::white().bright())
+            let style = if cursor_line && self.pane_focus {
+                (rgb(0x40, 0x40, 0x40), rgb(0xC9, 0xC9, 0xC9))
             } else {
-                (ansi::black(), ansi::white())
+                let lich = if self.pane_focus { rgb(0x2B, 0x2B, 0x2B) } else { rgb(0x17, 0x17, 0x17) };
+                let king = if self.pane_focus { rgb(0x80, 0x80, 0x80) } else { rgb(0x4E, 0x4E, 0x4E) };
+
+                (lich, king)
             };
 
             sp
@@ -143,56 +147,75 @@ impl PaneView for Editing {
                     " ".repeat((w as isize - visible_line.utf8_len()).max(0) as usize)
                 ))
         } else {
-            sp.bg(ansi::yellow(), " ".repeat(w as usize))
+            sp.bg(if self.pane_focus { rgb(0x1C, 0x1C, 0x1C) } else { rgb(0x0D, 0x0D, 0x0D) }, " ".repeat(w as usize))
         }
     }
 
-    fn event(&mut self, event: Event, w: u16, h: u16) -> PaneCommand {
+    fn event(&mut self, event: Event, w: u16, h: u16) -> (PaneCommand<ViewEvent>, ViewEvent) {
         let w = w as usize;
         let h = h as usize;
 
-        match event {
-            Event::Keyboard(keyboard_event) => match keyboard_event {
-                KeyboardEvent::NoModifiers(key) => match key {
-                    Key::ArrowLeft  => self.left           (w, h),
-                    Key::ArrowRight => self.right          (w, h),
-                    Key::ArrowUp    => self.up             (w, h),
-                    Key::ArrowDown  => self.down           (w, h),
-                    Key::Home       => self.line_start     (w, h),
-                    Key::End        => self.line_end       (w, h),
-                    Key::Delete     => self.erase_right    (w, h),
-                    Key::Enter      => self.newline        (w, h),
-                    Key::Tab        => self.tab            (w, h),
-                    _               => PaneCommand::DoNothing
+        (
+            match event {
+                Event::Keyboard(keyboard_event) => match keyboard_event {
+                    KeyboardEvent::NoModifiers(key) => match key {
+                        Key::ArrowLeft  => self.left           (w, h),
+                        Key::ArrowRight => self.right          (w, h),
+                        Key::ArrowUp    => self.up             (w, h),
+                        Key::ArrowDown  => self.down           (w, h),
+                        Key::Home       => self.line_start     (w, h),
+                        Key::End        => self.line_end       (w, h),
+                        Key::Delete     => self.erase_right    (w, h),
+                        Key::Enter      => self.newline        (w, h),
+                        Key::Tab        => self.tab            (w, h),
+                        _               => PaneCommand::DoNothing
+                    },
+                    KeyboardEvent::Ctrl(key) => match key {
+                        Key::ArrowLeft  => self.prev_word      (w, h),
+                        Key::ArrowRight => self.next_word      (w, h),
+                        Key::Home       => self.file_start     (w, h),
+                        Key::End        => self.file_end       (w, h),
+                        Key::Delete     => self.erase_next_word(w, h),
+                        _               => PaneCommand::DoNothing
+                    },
+                    KeyboardEvent::Alt(key) => match key {
+                        Key::ArrowUp   => self.move_line_up    (w, h),
+                        Key::ArrowDown => self.move_line_down  (w, h),
+                        _              => PaneCommand::DoNothing
+                    },
+                    KeyboardEvent::Backspace                 => self.erase_left     (    w, h),
+                    KeyboardEvent::CtrlBackspace             => self.erase_prev_word(    w, h),
+                    KeyboardEvent::Char(ch)                  => self.character      (ch, w, h),
+                    KeyboardEvent::CtrlChar(CtrlableChar::S) => { self.save(); PaneCommand::DoNothing },
+                    _                                        =>                PaneCommand::DoNothing
                 },
-                KeyboardEvent::Ctrl(key) => match key {
-                    Key::ArrowLeft  => self.prev_word      (w, h),
-                    Key::ArrowRight => self.next_word      (w, h),
-                    Key::Home       => self.file_start     (w, h),
-                    Key::End        => self.file_end       (w, h),
-                    Key::Delete     => self.erase_next_word(w, h),
-                    _               => PaneCommand::DoNothing
+                Event::Mouse(mouse_event) => match mouse_event {
+                    MouseEvent::Scroll(ScrollEvent::NoModifiers(scroll_direction)) => match scroll_direction {
+                        ScrollDirection::Up  (_x, _y) => self.scroll_dir(-1),
+                        ScrollDirection::Down(_x, _y) => self.scroll_dir( 1)
+                    },
+                    MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(x, y))) => self.warp_cursor(x, y),
+                    _                                                                         => PaneCommand::DoNothing
                 },
-                KeyboardEvent::Alt(key) => match key {
-                    Key::ArrowUp   => self.move_line_up   (w, h),
-                    Key::ArrowDown => self.move_line_down (w, h),
-                    _              => PaneCommand::DoNothing
+                Event::Custom(pane_event) => {
+                    match pane_event {
+                        PaneEvent::FocusGained => { self.pane_focus =  true; },
+                        PaneEvent::FocusLost   => { self.pane_focus = false; }
+                    }
+
+                    PaneCommand::RerenderMe
                 },
-                KeyboardEvent::Backspace                 => self.erase_left     (    w, h),
-                KeyboardEvent::CtrlBackspace             => self.erase_prev_word(    w, h),
-                KeyboardEvent::Char(ch)                  => self.character      (ch, w, h),
-                KeyboardEvent::CtrlChar(CtrlableChar::S) => { self.save(); PaneCommand::DoNothing },
-                _                                        =>                PaneCommand::DoNothing
+                _ => PaneCommand::DoNothing
             },
-            Event::Mouse(mouse_event) => match mouse_event {
-                MouseEvent::Scroll(ScrollEvent::NoModifiers(scroll_direction)) => match scroll_direction {
-                    ScrollDirection::Up  (_x, _y) => self.scroll_dir(-1),
-                    ScrollDirection::Down(_x, _y) => self.scroll_dir( 1)
-                },
-                MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(x, y))) => self.warp_cursor(x, y),
-                _                                                                         => PaneCommand::DoNothing
-            },
-            _ => PaneCommand::DoNothing
-        }
+            {
+                let (x, y) = self.cursor_visible_relative_position();
+
+                if x >= 0 && y >= 0 && x < w as isize && y < h as isize {
+                    ViewEvent::DrawCursor(x as u16, y as u16)
+                } else {
+                    ViewEvent::DoNothing
+                }
+            }
+        )
     }
 }

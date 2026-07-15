@@ -1,5 +1,4 @@
 # mochou-p/editerm/.gitignore
 
 target/
-Cargo.lock
 *.txt
