@@ -11,6 +11,7 @@ use crate::{Cursor, ViewEvent};
 use crate::utils::{ToWith, Utf8};
 
 
+#[derive(Clone)]
 pub struct Editing {
     path:       PathBuf,
     file:       File,
@@ -18,6 +19,7 @@ pub struct Editing {
     pane_focus: bool
 }
 
+#[derive(Clone)]
 pub struct File {
     clean:   bool,
     cursors: Vec<Cursor>,
@@ -120,6 +122,10 @@ impl Editing {
 }
 
 impl PaneView<ViewEvent> for Editing {
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent>> {
+        Box::new(self.clone())
+    }
+
     fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter) -> StyledPrinter {
         let i = i + self.scroll.y as usize;
 

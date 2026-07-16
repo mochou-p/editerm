@@ -2,7 +2,7 @@
 
 mod browsing;
 mod editing;
-//mod files;
+mod welcome;
 
-pub use {browsing::Browsing, editing::Editing}; //, files::Files};
+pub use {browsing::Browsing, editing::Editing, welcome::Welcome};
 

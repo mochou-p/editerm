@@ -13,6 +13,7 @@ use super::Editing;
 use crate::ViewEvent;
 
 
+#[derive(Clone)]
 pub struct Browsing {
     current_dir: PathBuf,
     focused:     usize,
@@ -24,6 +25,7 @@ pub struct Browsing {
     pane_focus:  bool
 }
 
+#[derive(Clone)]
 struct BrowserEntry {
     r:    bool,
     w:    bool,
@@ -47,7 +49,11 @@ impl From<PathBuf> for BrowserEntry {
 }
 
 impl Browsing {
-    pub fn new() -> Self {
+    pub fn new(path: Option<PathBuf>) -> Self {
+        if let Some(path) = path {
+            std::env::set_current_dir(path).unwrap();
+        }
+
         let current_dir           = std::env::current_dir().unwrap();
         let (parent, dirs, files) = Self::load(&current_dir);
         let focused               = 0;
@@ -124,12 +130,12 @@ impl Browsing {
         PaneCommand::RerenderMe
     }
 
-    fn go_in(&mut self) -> PaneCommand<ViewEvent> {
+    fn go_in(&mut self) -> (PaneCommand<ViewEvent>, ViewEvent) {
         let mut i = self.focused;
 
         if self.parent.is_some() {
             if i == 0 {
-                return self.go_out();
+                return (self.go_out(), ViewEvent::DoNothing);
             }
 
             i -= 1;
@@ -143,12 +149,12 @@ impl Browsing {
 
             self.focused = self.focuses.get(&self.current_dir).map_or_else(|| 0, |i| *i);
 
-            PaneCommand::RerenderMe
+            (PaneCommand::RerenderMe, ViewEvent::DoNothing)
         } else {
             i -= self.dirs.len() + self.parent.is_some() as usize - 1;
 
             let editing = Editing::new(self.files[i].path.clone());
-            PaneCommand::ReplaceMe(Box::new(editing))
+            (PaneCommand::ReplaceMe(Box::new(editing)), ViewEvent::DrawCursor(0, 0))
         }
     }
 
@@ -226,6 +232,10 @@ impl Browsing {
 }
 
 impl PaneView<ViewEvent> for Browsing {
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent>> {
+        Box::new(self.clone())
+    }
+
     fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter) -> StyledPrinter {
         let mut i = i + self.scroll_y;
 
@@ -258,7 +268,7 @@ impl PaneView<ViewEvent> for Browsing {
                     Key::ArrowUp                 => self.up(),
                     Key::ArrowDown               => self.down(),
                     Key::ArrowLeft               => self.go_out(),
-                    Key::ArrowRight | Key::Enter => self.go_in(),
+                    Key::ArrowRight | Key::Enter => { return self.go_in(); },
                     _                            => PaneCommand::DoNothing
                 },
                 Event::Keyboard(KeyboardEvent::Backspace) => {
@@ -269,7 +279,7 @@ impl PaneView<ViewEvent> for Browsing {
 
                     if y < self.entry_count() {
                         self.focused = y;
-                        self.go_in()
+                        return self.go_in();
                     } else {
                         PaneCommand::DoNothing
                     }
