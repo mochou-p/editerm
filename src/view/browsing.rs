@@ -5,12 +5,13 @@ use std::ffi::CString;
 use std::path::{Path, PathBuf};
 use spliterm::{PaneView, PaneCommand, Event, PaneEvent};
 use spliterm::betterm;
-use betterm::color::rgb;
 use betterm::styled_printer::StyledPrinter;
-use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton};
+use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton, ScrollEvent, ScrollDirection};
 use betterm::libc;
 use super::Editing;
 use crate::ViewEvent;
+use crate::config::Theme;
+use crate::view::Welcome;
 
 
 #[derive(Clone)]
@@ -49,14 +50,21 @@ impl From<PathBuf> for BrowserEntry {
 }
 
 impl Browsing {
-    pub fn new(path: Option<PathBuf>) -> Self {
-        if let Some(path) = path {
-            std::env::set_current_dir(path).unwrap();
-        }
+    pub fn new(path: Option<PathBuf>, cd_there: bool, i: Option<usize>) -> Self {
+        let current_dir = if let Some(path) = path {
+            if cd_there {
+                std::env::set_current_dir(&path).unwrap();
+            }
+            path
+        } else {
+            std::env::current_dir().unwrap()
+        };
 
-        let current_dir           = std::env::current_dir().unwrap();
+        let current_dir = current_dir.canonicalize().unwrap();
+
         let (parent, dirs, files) = Self::load(&current_dir);
-        let focused               = 0;
+        // TODO: make this a Path not a number, since dirs can change between visits
+        let focused               = i.unwrap_or(0);
         let focuses               = HashMap::from([(current_dir.clone(), focused)]);
 
         Self { current_dir, focused, focuses, parent, dirs, files, scroll_y: 0, pane_focus: true }
@@ -88,25 +96,41 @@ impl Browsing {
         self.parent.is_some() as usize + self.dirs.len() + self.files.len()
     }
 
-    fn up(&mut self) -> PaneCommand<ViewEvent> {
+    fn snap_to_cursor(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+        if self.focused < self.scroll_y {
+            self.scroll_y = self.focused;
+            PaneCommand::RerenderMe
+        } else if self.focused > self.scroll_y + h - 1 {
+            self.scroll_y = self.focused - h + 1;
+            PaneCommand::RerenderMe
+        } else {
+            PaneCommand::DoNothing
+        }
+    }
+
+    fn up(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
         if self.focused != 0 {
             self.focused -= 1;
+            self.snap_to_cursor(h);
             PaneCommand::RerenderMe
         } else {
             PaneCommand::DoNothing
         }
     }
 
-    fn down(&mut self) -> PaneCommand<ViewEvent> {
+    fn down(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
         if self.focused != self.dirs.len() + self.files.len() - self.parent.is_none() as usize {
             self.focused += 1;
+            self.snap_to_cursor(h);
             PaneCommand::RerenderMe
         } else {
             PaneCommand::DoNothing
         }
     }
 
-    fn go_out(&mut self) -> PaneCommand<ViewEvent> {
+    fn go_out(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+        self.scroll_y = 0;
+
         let Some(parent) = self.parent.take() else { return PaneCommand::DoNothing; };
 
         let old_dir = self.current_dir.clone();
@@ -127,15 +151,19 @@ impl Browsing {
                 |i| *i
             );
 
+        self.snap_to_cursor(h);
+
         PaneCommand::RerenderMe
     }
 
-    fn go_in(&mut self) -> (PaneCommand<ViewEvent>, ViewEvent) {
+    fn go_in(&mut self, h: usize) -> (PaneCommand<ViewEvent, Theme>, ViewEvent) {
+        self.scroll_y = 0;
+
         let mut i = self.focused;
 
         if self.parent.is_some() {
             if i == 0 {
-                return (self.go_out(), ViewEvent::DoNothing);
+                return (self.go_out(h), ViewEvent::DoNothing);
             }
 
             i -= 1;
@@ -149,11 +177,14 @@ impl Browsing {
 
             self.focused = self.focuses.get(&self.current_dir).map_or_else(|| 0, |i| *i);
 
+            self.snap_to_cursor(h);
+
             (PaneCommand::RerenderMe, ViewEvent::DoNothing)
         } else {
             i -= self.dirs.len() + self.parent.is_some() as usize - 1;
 
-            let editing = Editing::new(self.files[i].path.clone());
+            let j       = self.parent.is_some() as usize + self.dirs.len() + i;
+            let editing = Editing::new(self.files[i].path.clone(), Some(j));
             (PaneCommand::ReplaceMe(Box::new(editing)), ViewEvent::DrawCursor(0, 0))
         }
     }
@@ -166,23 +197,21 @@ impl Browsing {
             is_parent: bool,
             is_dir:    bool,
             suffix:    &str,
-            w:         u16
+            w:         u16,
+            theme:     &Theme
     ) -> StyledPrinter {
-        if focused {
-            sp = sp.push_bg(if self.pane_focus { rgb(0x40, 0x40, 0x40) } else { rgb(0x24, 0x24, 0x24) })
+        if focused && self.pane_focus {
+            sp = sp.push_bg(theme.background_selected)
         } else {
-            sp = sp.push_bg(if self.pane_focus { rgb(0x2B, 0x2B, 0x2B) } else { rgb(0x17, 0x17, 0x17) })
+            sp = sp.push_bg(theme.background)
         }
 
         let mut width = w;
 
         if width > 4 {
-            let green = if self.pane_focus { rgb(0x9E, 0xF5, 0x9E) } else { rgb(0x61, 0x99, 0x61) };
-            let red   = if self.pane_focus { rgb(0xFF, 0x94, 0x94) } else { rgb(0xA0, 0x5B, 0x5B) };
-
-            sp = sp.fg(if entry.r { green } else { red }, if entry.r { "r" } else { "-" });
-            sp = sp.fg(if entry.w { green } else { red }, if entry.w { "w" } else { "-" });
-            sp = sp.fg(if entry.x { green } else { red }, if entry.x { "x" } else { "-" });
+            sp = sp.fg(if entry.r { theme.green } else { theme.red }, if entry.r { "r" } else { "-" });
+            sp = sp.fg(if entry.w { theme.green } else { theme.red }, if entry.w { "w" } else { "-" });
+            sp = sp.fg(if entry.x { theme.green } else { theme.red }, if entry.x { "x" } else { "-" });
             sp = sp.text(" ");
 
             width -= 4;
@@ -198,50 +227,100 @@ impl Browsing {
         let visible_text = &text[..(width as usize).min(text.len())];
         let   final_text = format!("{visible_text}{}", " ".repeat(w as usize - visible_text.len() - 4));
 
-        if is_dir {
-            let idk = if focused { rgb(0x94, 0xD1, 0xFF) } else { rgb(0x76, 0xA4, 0xC6) };
-            let lol = if focused { rgb(0x5B, 0x82, 0xA0) } else { rgb(0x47, 0x65, 0x7B) };
+        sp.fg(if is_dir { theme.blue } else { theme.foreground }, final_text)
+    }
 
-            sp.fg(if self.pane_focus { idk } else { lol }, final_text)
-        } else {
-            let lmao = if focused { rgb(0xC9, 0xC9, 0xC9) } else { rgb(0x80, 0x80, 0x80) };
-            let rofl = if focused { rgb(0x7D, 0x7D, 0x7D) } else { rgb(0x4E, 0x4E, 0x4E) };
+    fn print_dir(&self, sp: StyledPrinter, focused: bool, i: usize, w: u16, theme: &Theme) -> StyledPrinter {
+        self.print_entry(sp, focused, &self.dirs[i], false, true, "/", w, theme)
+    }
 
-            sp.fg(if self.pane_focus { lmao } else { rofl }, final_text)
+    fn print_file(&self, sp: StyledPrinter, focused: bool, i: usize, w: u16, theme: &Theme) -> StyledPrinter {
+        self.print_entry(sp, focused, &self.files[i], false, false, "", w, theme)
+    }
+
+    fn print_empty(&self, sp: StyledPrinter, w: u16, theme: &Theme) -> StyledPrinter {
+        sp.bg(theme.background_disabled, " ".repeat(w as usize))
+    }
+
+    fn scroll_dir(&mut self, direction: isize) -> PaneCommand<ViewEvent, Theme> {
+        match direction {
+            -1 => self.scroll_up(),
+            1  => self.scroll_down(),
+            _  => PaneCommand::DoNothing
         }
     }
 
-    fn print_dir(&self, sp: StyledPrinter, focused: bool, i: usize, w: u16) -> StyledPrinter {
-        self.print_entry(sp, focused, &self.dirs[i], false, true, "/", w)
+    fn scroll_down(&mut self) -> PaneCommand<ViewEvent, Theme> {
+        if self.scroll_y != self.entry_count() - 1 {
+            self.scroll_y += 1;
+            PaneCommand::RerenderMe
+        } else {
+            PaneCommand::DoNothing
+        }
     }
 
-    fn print_file(&self, sp: StyledPrinter, focused: bool, i: usize, w: u16) -> StyledPrinter {
-        self.print_entry(sp, focused, &self.files[i], false, false, "", w)
+    fn scroll_up(&mut self) -> PaneCommand<ViewEvent, Theme> {
+        if self.scroll_y != 0 {
+            self.scroll_y -= 1;
+            PaneCommand::RerenderMe
+        } else {
+            PaneCommand::DoNothing
+        }
     }
 
-    fn print_empty(&self, sp: StyledPrinter, w: u16) -> StyledPrinter {
-        sp.bg(
-            if self.pane_focus {
-                rgb(0x1C, 0x1C, 0x1C)
-            } else {
-                rgb(0x0D, 0x0D, 0x0D)
+    fn dir_start(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+        let mut dirty = false;
+
+        if self.focused != 0 {
+            self.focused = 0;
+            dirty        = true;
+        }
+
+        match self.snap_to_cursor(h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
             },
-            " ".repeat(w as usize)
-        )
+            other => other
+        }
+    }
+
+    pub fn dir_end(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+        let     last_line = self.entry_count() - 1;
+        let mut dirty     = false;
+
+        if self.focused != last_line {
+            self.focused = last_line;
+            dirty        = true;
+        }
+
+        match self.snap_to_cursor(h) {
+            PaneCommand::DoNothing => {
+                if dirty {
+                    PaneCommand::RerenderMe
+                } else {
+                    PaneCommand::DoNothing
+                }
+            },
+            other => other
+        }
     }
 }
 
-impl PaneView<ViewEvent> for Browsing {
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent>> {
+impl PaneView<ViewEvent, Theme> for Browsing {
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme>> {
         Box::new(self.clone())
     }
 
-    fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter) -> StyledPrinter {
+    fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
         let mut i = i + self.scroll_y;
 
         if let Some(parent) = self.parent.as_ref() {
             if i == 0 {
-                return self.print_entry(sp, self.focused == 0, parent, true, true, "/", w);
+                return self.print_entry(sp, self.focused == 0, parent, true, true, "/", w, theme);
             } else {
                 i -= 1;
             }
@@ -250,39 +329,60 @@ impl PaneView<ViewEvent> for Browsing {
         let focused = self.focused == i + self.parent.is_some() as usize;
 
         if i < self.dirs.len() {
-            return self.print_dir(sp, focused, i, w);
+            return self.print_dir(sp, focused, i, w, theme);
         }
         i -= self.dirs.len();
 
         if i < self.files.len() {
-            return self.print_file(sp, focused, i, w);
+            return self.print_file(sp, focused, i, w, theme);
         }
 
-        self.print_empty(sp, w)
+        self.print_empty(sp, w, theme)
     }
 
-    fn event(&mut self, event: Event, _w: u16, _h: u16) -> (PaneCommand<ViewEvent>, ViewEvent) {
+    fn event(&mut self, event: Event, _w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme>, ViewEvent) {
+        let h = h as usize;
+
         (
             match event {
                 Event::Keyboard(KeyboardEvent::NoModifiers(key)) => match key {
-                    Key::ArrowUp                 => self.up(),
-                    Key::ArrowDown               => self.down(),
-                    Key::ArrowLeft               => self.go_out(),
-                    Key::ArrowRight | Key::Enter => { return self.go_in(); },
+                    Key::F1 => {
+                        return (
+                            PaneCommand::ReplaceMe(
+                                Box::new(
+                                    Welcome::new(
+                                        Some(self.pane_clone())
+                                    )
+                                )
+                            ),
+                            ViewEvent::DoNothing
+                        );
+                    },
+                    Key::Escape                  => { return (PaneCommand::DoNothing,  ViewEvent::CloseMe); },
+                    Key::ArrowUp                 =>          self.up       (h),
+                    Key::ArrowDown               =>          self.down     (h),
+                    Key::ArrowLeft               =>          self.go_out   (h),
+                    Key::ArrowRight | Key::Enter => { return self.go_in    (h); },
+                    Key::Home                    =>          self.dir_start(h),
+                    Key::End                     =>          self.dir_end  (h),
                     _                            => PaneCommand::DoNothing
                 },
                 Event::Keyboard(KeyboardEvent::Backspace) => {
-                    self.go_out()
+                    self.go_out(h)
                 },
                 Event::Mouse(MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(_x, y)))) => {
-                    let y = y as usize;
+                    let y = y as usize + self.scroll_y;
 
                     if y < self.entry_count() {
                         self.focused = y;
-                        return self.go_in();
+                        return self.go_in(h);
                     } else {
                         PaneCommand::DoNothing
                     }
+                },
+                Event::Mouse(MouseEvent::Scroll(ScrollEvent::NoModifiers(scroll_direction))) => match scroll_direction {
+                    ScrollDirection::Up  (_x, _y) => self.scroll_dir(-1),
+                    ScrollDirection::Down(_x, _y) => self.scroll_dir( 1)
                 },
                 Event::Custom(pane_event) => {
                     match pane_event {

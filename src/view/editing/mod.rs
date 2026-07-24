@@ -5,10 +5,12 @@ mod actions;
 use std::path::PathBuf;
 use spliterm::{PaneView, PaneCommand, Event, PaneEvent};
 use spliterm::betterm;
-use betterm::{color::rgb, styled_printer::StyledPrinter};
+use betterm::styled_printer::StyledPrinter;
 use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton, CtrlableChar, ScrollEvent, ScrollDirection};
 use crate::{Cursor, ViewEvent};
+use crate::config::Theme;
 use crate::utils::{ToWith, Utf8};
+use crate::view::{Browsing, Welcome};
 
 
 #[derive(Clone)]
@@ -16,7 +18,8 @@ pub struct Editing {
     path:       PathBuf,
     file:       File,
     scroll:     Vec2,
-    pane_focus: bool
+    pane_focus: bool,
+    i:          Option<usize>
 }
 
 #[derive(Clone)]
@@ -33,12 +36,13 @@ struct Vec2 {
 }
 
 impl Editing {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(path: PathBuf, i: Option<usize>) -> Self {
         Self {
             file:       Self::read_file(&path),
             path,
             scroll:     Vec2 { x: 0, y: 0 },
-            pane_focus: true
+            pane_focus: true,
+            i
         }
     }
 
@@ -66,7 +70,7 @@ impl Editing {
         (x, y)
     }
 
-    fn snap_to_cursor(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    fn snap_to_cursor(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         let cursor     = self.file.cursors[0].clone();
         let old_scroll = self.scroll.clone();
 
@@ -90,7 +94,7 @@ impl Editing {
     }
 
     // TODO: merge cursors (could make an outside function, and its relevant in other places too)
-    fn warp_cursor(&mut self, x: u16, y: u16) -> PaneCommand<ViewEvent> {
+    fn warp_cursor(&mut self, x: u16, y: u16) -> PaneCommand<ViewEvent, Theme> {
         let old_cursor = self.file.cursors[0].clone();
 
         let y = {
@@ -121,12 +125,12 @@ impl Editing {
     }
 }
 
-impl PaneView<ViewEvent> for Editing {
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent>> {
+impl PaneView<ViewEvent, Theme> for Editing {
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme>> {
         Box::new(self.clone())
     }
 
-    fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter) -> StyledPrinter {
+    fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
         let i = i + self.scroll.y as usize;
 
         if i < self.file.lines.len() {
@@ -137,27 +141,24 @@ impl PaneView<ViewEvent> for Editing {
             let visible_line = line.utf8_range(x, x + w as isize);
             let cursor_line  = y == self.file.cursors[0].y;
 
-            let style = if cursor_line && self.pane_focus {
-                (rgb(0x40, 0x40, 0x40), rgb(0xC9, 0xC9, 0xC9))
+            let bg = if cursor_line && self.pane_focus {
+                theme.background_selected
             } else {
-                let lich = if self.pane_focus { rgb(0x2B, 0x2B, 0x2B) } else { rgb(0x17, 0x17, 0x17) };
-                let king = if self.pane_focus { rgb(0x80, 0x80, 0x80) } else { rgb(0x4E, 0x4E, 0x4E) };
-
-                (lich, king)
+                theme.background
             };
 
             sp
-                .push_bg(style.0)
-                .fg(style.1, format!(
+                .push_bg(bg)
+                .fg(theme.foreground, format!(
                     "{visible_line}{}",
                     " ".repeat((w as isize - visible_line.utf8_len()).max(0) as usize)
                 ))
         } else {
-            sp.bg(if self.pane_focus { rgb(0x1C, 0x1C, 0x1C) } else { rgb(0x0D, 0x0D, 0x0D) }, " ".repeat(w as usize))
+            sp.bg(theme.background_disabled, " ".repeat(w as usize))
         }
     }
 
-    fn event(&mut self, event: Event, w: u16, h: u16) -> (PaneCommand<ViewEvent>, ViewEvent) {
+    fn event(&mut self, event: Event, w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme>, ViewEvent) {
         let w = w as usize;
         let h = h as usize;
 
@@ -165,6 +166,32 @@ impl PaneView<ViewEvent> for Editing {
             match event {
                 Event::Keyboard(keyboard_event) => match keyboard_event {
                     KeyboardEvent::NoModifiers(key) => match key {
+                        Key::F1 => {
+                            return (
+                                PaneCommand::ReplaceMe(
+                                    Box::new(
+                                        Welcome::new(
+                                            Some(self.pane_clone())
+                                        )
+                                    )
+                                ),
+                                ViewEvent::DoNothing
+                            );
+                        },
+                        Key::Escape => {
+                            return (
+                                PaneCommand::ReplaceMe(
+                                    Box::new(
+                                        Browsing::new(
+                                            Some(self.path.parent().unwrap().to_path_buf()),
+                                            false,
+                                            self.i
+                                        )
+                                    )
+                                ),
+                                ViewEvent::DoNothing
+                            );
+                        },
                         Key::ArrowLeft  => self.left           (w, h),
                         Key::ArrowRight => self.right          (w, h),
                         Key::ArrowUp    => self.up             (w, h),
@@ -182,6 +209,8 @@ impl PaneView<ViewEvent> for Editing {
                         Key::Home       => self.file_start     (w, h),
                         Key::End        => self.file_end       (w, h),
                         Key::Delete     => self.erase_next_word(w, h),
+                        Key::ArrowUp    => self.scroll_dir     (  -5),
+                        Key::ArrowDown  => self.scroll_dir     (   5),
                         _               => PaneCommand::DoNothing
                     },
                     KeyboardEvent::Alt(key) => match key {
