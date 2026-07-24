@@ -2,11 +2,12 @@
 
 use spliterm::PaneCommand;
 use crate::ViewEvent;
+use crate::config::Theme;
 use crate::utils::{self, Utf8, Utf8Mut, word};
 
 
 impl super::super::Editing {
-    pub fn newline(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    pub fn newline(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         self.file.clean = false;
 
         for cursor in &mut self.file.cursors {
@@ -24,7 +25,7 @@ impl super::super::Editing {
         PaneCommand::RerenderMe
     }
 
-    pub fn tab(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    pub fn tab(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         self.file.clean = false;
 
         for cursor in &mut self.file.cursors {
@@ -40,7 +41,7 @@ impl super::super::Editing {
         PaneCommand::RerenderMe
     }
 
-    pub fn character(&mut self, ch: char, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    pub fn character(&mut self, ch: char, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         self.file.clean = false;
 
         for cursor in &mut self.file.cursors {
@@ -55,7 +56,7 @@ impl super::super::Editing {
         PaneCommand::RerenderMe
     }
 
-    pub fn erase_left(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    pub fn erase_left(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -93,7 +94,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn erase_right(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    pub fn erase_right(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -126,7 +127,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn move_line_up(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    pub fn move_line_up(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -153,7 +154,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn move_line_down(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    pub fn move_line_down(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -180,7 +181,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn erase_prev_word(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    pub fn erase_prev_word(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -218,7 +219,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn erase_next_word(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent> {
+    pub fn erase_next_word(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {

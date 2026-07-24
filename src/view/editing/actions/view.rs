@@ -2,29 +2,32 @@
 
 use spliterm::PaneCommand;
 use crate::ViewEvent;
+use crate::config::Theme;
 
 
 impl super::super::Editing {
-    pub fn scroll_dir(&mut self, direction: isize) -> PaneCommand<ViewEvent> {
+    pub fn scroll_dir(&mut self, direction: isize) -> PaneCommand<ViewEvent, Theme> {
         match direction {
-            -1 => self.scroll_up(),
-            1  => self.scroll_down(),
-            _  => PaneCommand::DoNothing
+            ..0 => self.scroll_up  (-direction),
+            1.. => self.scroll_down( direction),
+            0   => PaneCommand::DoNothing
         }
     }
 
-    fn scroll_down(&mut self) -> PaneCommand<ViewEvent> {
-        if self.scroll.y != (self.file.lines.len() - 1) as isize {
-            self.scroll.y += 1;
+    fn scroll_down(&mut self, amount: isize) -> PaneCommand<ViewEvent, Theme> {
+        let last_line = (self.file.lines.len() - 1) as isize;
+
+        if self.scroll.y != last_line {
+            self.scroll.y = (self.scroll.y + amount).min(last_line);
             PaneCommand::RerenderMe
         } else {
             PaneCommand::DoNothing
         }
     }
 
-    fn scroll_up(&mut self) -> PaneCommand<ViewEvent> {
+    fn scroll_up(&mut self, amount: isize) -> PaneCommand<ViewEvent, Theme> {
         if self.scroll.y != 0 {
-            self.scroll.y -= 1;
+            self.scroll.y = (self.scroll.y - amount).max(0);
             PaneCommand::RerenderMe
         } else {
             PaneCommand::DoNothing

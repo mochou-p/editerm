@@ -26,7 +26,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "spliterm"
 version = "0.1.0"
-source = "git+https://github.com/mochou-p/spliterm#be0402f8a25466ac7a6444ab2ff58a1b98ddc390"
+source = "git+https://github.com/mochou-p/spliterm#02809044f664052a799fb2a478cbeb0f604a5630"
 dependencies = [
  "betterm",
 ]

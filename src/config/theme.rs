@@ -1,94 +1,103 @@
 // mochou-p/editerm/src/config/theme.rs
 
-use betterm::color::{BgRgb, FgRgb};
+use spliterm::betterm;
+use betterm::color::{rgb, RgbColor};
 
 
 #[allow(dead_code)]
+#[derive(Clone)]
 pub struct Theme {
-    pub backgrounds: Backgrounds,
-    pub foregrounds: Foregrounds,
-    pub special:     Special,
-    pub ansi:        Ansi
-}
-
-pub struct Backgrounds {
-    pub primary:   Background,
-    pub secondary: Background
-}
-
-pub struct Background {
-    pub active:   String,
-    pub normal:   String,
-    pub disabled: String
-}
-
-pub struct Foregrounds {
-    pub primary:   Foreground,
-    pub secondary: Foreground
-}
-
-pub struct Foreground {
-    pub active:   String,
-    pub normal:   String
-}
-
-pub struct Special {
-    pub error: String
-}
-
-#[allow(dead_code)]
-pub struct Ansi {
-    pub red:     String,
-    pub green:   String,
-    pub yellow:  String,
-    pub blue:    String,
-    pub magenta: String,
-    pub cyan:    String
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Self::catppuccin_mocha()
-    }
+    pub pane_separator:      RgbColor,
+    pub background_disabled: RgbColor,
+    pub background:          RgbColor,
+    pub background_selected: RgbColor,
+    pub foreground_disabled: RgbColor,
+    pub foreground:          RgbColor,
+    pub red:                 RgbColor,
+    pub yellow:              RgbColor,
+    pub green:               RgbColor,
+    pub cyan:                RgbColor,
+    pub blue:                RgbColor,
+    pub magenta:             RgbColor
 }
 
 impl Theme {
+    pub fn all() -> Vec<Self> {
+        vec![
+            Theme::catppuccin_mocha(),
+            Theme::catppuccin_latte(),
+            Theme::dark(),
+            Theme::light()
+        ]
+    }
+
     // https://catppuccin.com/palette/
-    fn catppuccin_mocha() -> Self {
+    pub fn catppuccin_mocha() -> Self {
         Self {
-            backgrounds: Backgrounds {
-                primary: Background {
-                    active:   BgRgb(49, 50, 68).to_string(),
-                    normal:   BgRgb(30, 30, 46).to_string(),
-                    disabled: BgRgb(17, 17, 27).to_string()
-                },
-                secondary: Background {
-                    active:   BgRgb(69, 71, 90).to_string(),
-                    normal:   BgRgb(49, 50, 68).to_string(),
-                    disabled: BgRgb(24, 24, 37).to_string()
-                }
-            },
-            foregrounds: Foregrounds {
-                primary: Foreground {
-                    active: FgRgb(205, 214, 244).to_string(),
-                    normal: FgRgb(166, 173, 200).to_string()
-                },
-                secondary: Foreground {
-                    active: FgRgb(205, 214, 244).to_string(),
-                    normal: FgRgb(166, 173, 200).to_string()
-                }
-            },
-            special: Special {
-                error: BgRgb(210,  15, 57).to_string() + &FgRgb(17, 17, 27).to_string()
-            },
-            ansi: Ansi {
-                red:     FgRgb(243, 139, 168).to_string(),
-                green:   FgRgb(166, 227, 161).to_string(),
-                yellow:  FgRgb(249, 226, 175).to_string(),
-                blue:    FgRgb(137, 180, 250).to_string(),
-                magenta: FgRgb(245, 194, 231).to_string(),
-                cyan:    FgRgb(137, 220, 235).to_string()
-            }
+            pane_separator:      rgb(0x11, 0x11, 0x1b),
+            background_disabled: rgb(0x18, 0x18, 0x25),
+            background:          rgb(0x1e, 0x1e, 0x2e),
+            background_selected: rgb(0x31, 0x32, 0x44),
+            foreground_disabled: rgb(0x93, 0x99, 0xb2),
+            foreground:          rgb(0xcd, 0xd6, 0xf4),
+            red:                 rgb(0xf3, 0x8b, 0xa8),
+            yellow:              rgb(0xf9, 0xe2, 0xaf),
+            green:               rgb(0xa6, 0xe3, 0xa1),
+            cyan:                rgb(0x89, 0xdc, 0xeb),
+            blue:                rgb(0x89, 0xb4, 0xfa),
+            magenta:             rgb(0xcb, 0xa6, 0xf7)
+        }
+    }
+
+    // https://catppuccin.com/palette/
+    pub fn catppuccin_latte() -> Self {
+        Self {
+            pane_separator:      rgb(0x9c, 0xa0, 0xb0),
+            background_disabled: rgb(0xbc, 0xc0, 0xcc),
+            background:          rgb(0xdc, 0xe0, 0xe8),
+            background_selected: rgb(0xef, 0xf1, 0xf5),
+            foreground_disabled: rgb(0x7c, 0x7f, 0x93),
+            foreground:          rgb(0x4c, 0x4f, 0x69),
+            red:                 rgb(0xd2, 0x0f, 0x39),
+            yellow:              rgb(0xdf, 0x8e, 0x1d),
+            green:               rgb(0x40, 0xa0, 0x2b),
+            cyan:                rgb(0x04, 0xa5, 0xe5),
+            blue:                rgb(0x1e, 0x66, 0xf5),
+            magenta:             rgb(0x88, 0x39, 0xef)
+        }
+    }
+
+    pub fn dark() -> Self {
+        Self {
+            pane_separator:      rgb(0x00, 0x00, 0x00),
+            background_disabled: rgb(0x12, 0x12, 0x12),
+            background:          rgb(0x1a, 0x1a, 0x1a),
+            background_selected: rgb(0x24, 0x24, 0x24),
+            foreground_disabled: rgb(0xd9, 0xd9, 0xd9),
+            foreground:          rgb(0xff, 0xff, 0xff),
+            red:                 rgb(0xff, 0x4f, 0x4d),
+            yellow:              rgb(0xff, 0xff, 0x4d),
+            green:               rgb(0x4d, 0xff, 0x4d),
+            cyan:                rgb(0x4d, 0xff, 0xff),
+            blue:                rgb(0x4d, 0x4d, 0xff),
+            magenta:             rgb(0xff, 0x4d, 0xff)
+        }
+    }
+
+    pub fn light() -> Self {
+        Self {
+            pane_separator:      rgb(0xc2, 0xc2, 0xc2),
+            background_disabled: rgb(0xd6, 0xd6, 0xd6),
+            background:          rgb(0xeb, 0xeb, 0xeb),
+            background_selected: rgb(0xff, 0xff, 0xff),
+            foreground_disabled: rgb(0x26, 0x26, 0x26),
+            foreground:          rgb(0x00, 0x00, 0x00),
+            red:                 rgb(0xcc, 0x00, 0x00),
+            yellow:              rgb(0xcc, 0xcc, 0x00),
+            green:               rgb(0x00, 0xcc, 0x00),
+            cyan:                rgb(0x00, 0xcc, 0xcc),
+            blue:                rgb(0x00, 0x00, 0xcc),
+            magenta:             rgb(0xcc, 0x00, 0xcc)
         }
     }
 }
