@@ -45,7 +45,7 @@ impl Theme {
             green:               rgb(0xa6, 0xe3, 0xa1),
             cyan:                rgb(0x89, 0xdc, 0xeb),
             blue:                rgb(0x89, 0xb4, 0xfa),
-            magenta:             rgb(0xf5, 0xc2, 0xe7)
+            magenta:             rgb(0xcb, 0xa6, 0xf7)
         }
     }
 
@@ -63,7 +63,7 @@ impl Theme {
             green:               rgb(0x40, 0xa0, 0x2b),
             cyan:                rgb(0x04, 0xa5, 0xe5),
             blue:                rgb(0x1e, 0x66, 0xf5),
-            magenta:             rgb(0xea, 0x76, 0xcb)
+            magenta:             rgb(0x88, 0x39, 0xef)
         }
     }
 

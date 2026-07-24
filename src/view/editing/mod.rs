@@ -1,6 +1,7 @@
 // mochou-p/editerm/src/view/editing/mod.rs
 
 mod actions;
+mod highlight;
 
 use std::path::PathBuf;
 use spliterm::{PaneView, PaneCommand, Event, PaneEvent};
@@ -147,12 +148,11 @@ impl PaneView<ViewEvent, Theme> for Editing {
                 theme.background
             };
 
-            sp
-                .push_bg(bg)
-                .fg(theme.foreground, format!(
-                    "{visible_line}{}",
-                    " ".repeat((w as isize - visible_line.utf8_len()).max(0) as usize)
-                ))
+            // TODO: this is wrong, colors can break on words cut by scroll.x, requires a new betterm feature
+            sp.with_bg(bg, |sp| {
+                self.highlight(sp, &visible_line, theme)
+                    .text(" ".repeat((w as isize - visible_line.utf8_len()).max(0) as usize))
+            })
         } else {
             sp.bg(theme.background_disabled, " ".repeat(w as usize))
         }
