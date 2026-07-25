@@ -28,7 +28,7 @@ impl PaneView<ViewEvent, Theme> for Welcome {
         Box::new(Welcome { scroll: self.scroll, ancestor })
     }
 
-    fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
+    fn print_line(&mut self, i: usize, w: u16, _h: u16, sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
         let i = i + self.scroll;
 
         let bg  = theme.background;
@@ -38,10 +38,16 @@ impl PaneView<ViewEvent, Theme> for Welcome {
         let yfg = theme.yellow;
         let bin = env!("CARGO_BIN_NAME");
 
+        let state_txt = if self.ancestor.is_some() {
+            "  Escape to go back"
+        } else {
+            "  Escape to exit, Enter to open current directory"
+        };
+
         match i {
             0    => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
             1    => sp.with_bg(bg, |sp| sp.fg(cfg, fill(w, format!("  Welcome to {bin}! \\(^ヮ^)/"                                                          )))),
-            2    => sp.with_bg(bg, |sp| sp.fg(yfg, fill(w,         "  Enter to go back, or Escape to exit"                                                    ))),
+            2    => sp.with_bg(bg, |sp| sp.fg(yfg, fill(w,            state_txt                                                                              ))),
             3    => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
             4    => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
             5    => sp.with_bg(bg, |sp| sp.fg(fgb, fill(w,         "  USAGE"                                                                                 ))),
@@ -90,26 +96,32 @@ impl PaneView<ViewEvent, Theme> for Welcome {
             48   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Delete                   = Erase character to the right of the cursor"               ))),
             49   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Backspace         = Erase to the  left from the cursor until separator"       ))),
             50   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Delete            = Erase to the right from the cursor until separator"       ))),
-            51   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowUp           = Scroll 5 lines   up"                                      ))),
-            52   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowDown         = Scroll 5 lines down"                                      ))),
-            53   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Enter                    = Insert a newline"                                         ))),
-            54   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Tab                      = Insert spaces to reach the closest tabstop to the right"  ))),
-            55   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + S                 = Save file"                                                ))),
-            56   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Escape                   = Browse the parent directory"                              ))),
-            57.. => sp.     bg(bg,                 fill(w,         ""                                                                                         ))
+            51   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowUp           = Scroll 5    lines    up"                                  ))),
+            52   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowDown         = Scroll 5    lines  down"                                  ))),
+            53   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    PageUp                   = Scroll full height   up"                                  ))),
+            54   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    PageDown                 = Scroll full height down"                                  ))),
+            55   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Enter                    = Insert a newline"                                         ))),
+            56   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Tab                      = Insert spaces to reach the closest tabstop to the right"  ))),
+            57   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + S                 = Save file"                                                ))),
+            58   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Escape                   = Browse the parent directory"                              ))),
+            59.. => sp.     bg(bg,                 fill(w,         ""                                                                                         ))
         }
     }
 
     fn event(&mut self, event: Event, _w: u16, _h: u16) -> (PaneCommand<ViewEvent, Theme>, ViewEvent) {
         match event {
-            Event::Keyboard(KeyboardEvent::NoModifiers(Key::Escape)) => {
-                (PaneCommand::DoNothing, ViewEvent::CloseMe)
-            },
             Event::Keyboard(KeyboardEvent::NoModifiers(Key::Enter)) => {
-                if let Some(ancestor) = self.ancestor.take() {
-                    (PaneCommand::ReplaceMe(ancestor),                                   ViewEvent::DoNothing)
-                } else {
+                if self.ancestor.is_none() {
                     (PaneCommand::ReplaceMe(Box::new(Browsing::new(None, false, None))), ViewEvent::DoNothing)
+                } else {
+                    (PaneCommand::DoNothing, ViewEvent::DoNothing)
+                }
+            },
+            Event::Keyboard(KeyboardEvent::NoModifiers(Key::Escape)) => {
+                if let Some(ancestor) = self.ancestor.take() {
+                    (PaneCommand::ReplaceMe(ancestor), ViewEvent::DoNothing)
+                } else {
+                    (PaneCommand::DoNothing, ViewEvent::CloseMe)
                 }
             },
             Event::Keyboard(KeyboardEvent::NoModifiers(Key::ArrowUp)) => {
@@ -126,7 +138,7 @@ impl PaneView<ViewEvent, Theme> for Welcome {
             },
             Event::Mouse(MouseEvent::Scroll(ScrollEvent::NoModifiers(scroll_direction))) => {
                 match scroll_direction {
-                    ScrollDirection::  Up(_x, _y) => {
+                    ScrollDirection::Up(_x, _y) => {
                         if self.scroll != 0 {
                             self.scroll -= 1;
                             (PaneCommand::RerenderMe, ViewEvent::DoNothing)

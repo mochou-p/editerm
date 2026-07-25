@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use spliterm::{PaneView, PaneCommand, Event, PaneEvent};
 use spliterm::betterm;
 use betterm::styled_printer::StyledPrinter;
-use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton, ScrollEvent, ScrollDirection};
+use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton, ScrollEvent, ScrollDirection, HoverEvent};
 use betterm::libc;
 use super::Editing;
 use crate::ViewEvent;
@@ -315,7 +315,7 @@ impl PaneView<ViewEvent, Theme> for Browsing {
         Box::new(self.clone())
     }
 
-    fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
+    fn print_line(&mut self, i: usize, w: u16, _h: u16, sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
         let mut i = i + self.scroll_y;
 
         if let Some(parent) = self.parent.as_ref() {
@@ -376,6 +376,20 @@ impl PaneView<ViewEvent, Theme> for Browsing {
                     if y < self.entry_count() {
                         self.focused = y;
                         return self.go_in(h);
+                    } else {
+                        PaneCommand::DoNothing
+                    }
+                },
+                Event::Mouse(MouseEvent::Hover(HoverEvent::NoModifiers(_x, y))) => {
+                    let y = y as usize + self.scroll_y;
+
+                    if y < self.entry_count() {
+                        if self.focused != y {
+                            self.focused = y;
+                            PaneCommand::RerenderMe
+                        } else {
+                            PaneCommand::DoNothing
+                        }
                     } else {
                         PaneCommand::DoNothing
                     }
