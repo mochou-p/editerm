@@ -26,8 +26,8 @@ impl Theme {
         vec![
             Theme::catppuccin_mocha(),
             Theme::catppuccin_latte(),
-            Theme::dark(),
-            Theme::light()
+            Theme::mono_dark(),
+            Theme::mono_light()
         ]
     }
 
@@ -67,37 +67,37 @@ impl Theme {
         }
     }
 
-    pub fn dark() -> Self {
+    pub fn mono_dark() -> Self {
         Self {
             pane_separator:      rgb(0x00, 0x00, 0x00),
             background_disabled: rgb(0x12, 0x12, 0x12),
             background:          rgb(0x1a, 0x1a, 0x1a),
             background_selected: rgb(0x24, 0x24, 0x24),
-            foreground_disabled: rgb(0xd9, 0xd9, 0xd9),
+            foreground_disabled: rgb(0xaa, 0xaa, 0xaa),
             foreground:          rgb(0xff, 0xff, 0xff),
-            red:                 rgb(0xff, 0x4f, 0x4d),
-            yellow:              rgb(0xff, 0xff, 0x4d),
-            green:               rgb(0x4d, 0xff, 0x4d),
-            cyan:                rgb(0x4d, 0xff, 0xff),
-            blue:                rgb(0x4d, 0x4d, 0xff),
-            magenta:             rgb(0xff, 0x4d, 0xff)
+            red:                 rgb(0xff, 0xff, 0xff),
+            yellow:              rgb(0xff, 0xff, 0xff),
+            green:               rgb(0xff, 0xff, 0xff),
+            cyan:                rgb(0xff, 0xff, 0xff),
+            blue:                rgb(0xff, 0xff, 0xff),
+            magenta:             rgb(0xff, 0xff, 0xff)
         }
     }
 
-    pub fn light() -> Self {
+    pub fn mono_light() -> Self {
         Self {
             pane_separator:      rgb(0xc2, 0xc2, 0xc2),
             background_disabled: rgb(0xd6, 0xd6, 0xd6),
             background:          rgb(0xeb, 0xeb, 0xeb),
             background_selected: rgb(0xff, 0xff, 0xff),
-            foreground_disabled: rgb(0x26, 0x26, 0x26),
+            foreground_disabled: rgb(0x99, 0x99, 0x99),
             foreground:          rgb(0x00, 0x00, 0x00),
-            red:                 rgb(0xcc, 0x00, 0x00),
-            yellow:              rgb(0xcc, 0xcc, 0x00),
-            green:               rgb(0x00, 0xcc, 0x00),
-            cyan:                rgb(0x00, 0xcc, 0xcc),
-            blue:                rgb(0x00, 0x00, 0xcc),
-            magenta:             rgb(0xcc, 0x00, 0xcc)
+            red:                 rgb(0x00, 0x00, 0x00),
+            yellow:              rgb(0x00, 0x00, 0x00),
+            green:               rgb(0x00, 0x00, 0x00),
+            cyan:                rgb(0x00, 0x00, 0x00),
+            blue:                rgb(0x00, 0x00, 0x00),
+            magenta:             rgb(0x00, 0x00, 0x00)
         }
     }
 }

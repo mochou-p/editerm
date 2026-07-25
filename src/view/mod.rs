@@ -2,7 +2,8 @@
 
 mod browsing;
 mod editing;
+mod save_dialog;
 mod welcome;
 
-pub use {browsing::Browsing, editing::Editing, welcome::Welcome};
+pub use {browsing::Browsing, editing::Editing, save_dialog::SaveDialog, welcome::Welcome};
 

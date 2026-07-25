@@ -11,16 +11,16 @@ use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseB
 use crate::{Cursor, ViewEvent};
 use crate::config::Theme;
 use crate::utils::{ToWith, Utf8};
-use crate::view::{Browsing, Welcome};
+use crate::view::{Browsing, Welcome, SaveDialog};
 
 
 #[derive(Clone)]
 pub struct Editing {
-    path:       PathBuf,
-    file:       File,
-    scroll:     Vec2,
-    pane_focus: bool,
-    i:          Option<usize>
+    pub path:       PathBuf,
+        file:       File,
+        scroll:     Vec2,
+        pane_focus: bool,
+    pub i:          Option<usize>
 }
 
 #[derive(Clone)]
@@ -38,6 +38,8 @@ struct Vec2 {
 
 impl Editing {
     pub fn new(path: PathBuf, i: Option<usize>) -> Self {
+        let path = path.canonicalize().unwrap();
+
         Self {
             file:       Self::read_file(&path),
             path,
@@ -131,7 +133,7 @@ impl PaneView<ViewEvent, Theme> for Editing {
         Box::new(self.clone())
     }
 
-    fn print_line(&self, i: usize, w: u16, _h: u16, sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
+    fn print_line(&mut self, i: usize, w: u16, _h: u16, sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
         let i = i + self.scroll.y as usize;
 
         if i < self.file.lines.len() {
@@ -181,13 +183,17 @@ impl PaneView<ViewEvent, Theme> for Editing {
                         Key::Escape => {
                             return (
                                 PaneCommand::ReplaceMe(
-                                    Box::new(
-                                        Browsing::new(
-                                            Some(self.path.parent().unwrap().to_path_buf()),
-                                            false,
-                                            self.i
+                                    if self.file.clean {
+                                        Box::new(
+                                            Browsing::new(
+                                                Some(self.path.parent().unwrap().to_path_buf()),
+                                                false,
+                                                self.i
+                                            )
                                         )
-                                    )
+                                    } else {
+                                        Box::new(SaveDialog::new(self.clone()))
+                                    }
                                 ),
                                 ViewEvent::DoNothing
                             );
@@ -201,6 +207,8 @@ impl PaneView<ViewEvent, Theme> for Editing {
                         Key::Delete     => self.erase_right    (w, h),
                         Key::Enter      => self.newline        (w, h),
                         Key::Tab        => self.tab            (w, h),
+                        Key::PageUp     => self.scroll_dir(-(h as isize)),
+                        Key::PageDown   => self.scroll_dir(  h as isize ),
                         _               => PaneCommand::DoNothing
                     },
                     KeyboardEvent::Ctrl(key) => match key {
