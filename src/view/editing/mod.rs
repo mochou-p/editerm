@@ -3,16 +3,22 @@
 mod actions;
 mod highlight;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use spliterm::{PaneView, PaneCommand, Event, PaneEvent};
 use spliterm::betterm;
+use betterm::color::rgb;
 use betterm::styled_printer::StyledPrinter;
 use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton, CtrlableChar, ScrollEvent, ScrollDirection};
-use crate::{Cursor, ViewEvent};
+use crate::{Cursor, ViewEvent, In, Out, ColoredText};
 use crate::config::Theme;
 use crate::utils::{ToWith, Utf8};
-use crate::view::{Browsing, Welcome, SaveDialog};
+use crate::view::{Browsing, Welcome, SaveDialog, MultipleOpens};
 
+
+// NOTE: i know its bad :grimacing:
+static mut FILES: LazyLock<HashSet<PathBuf>> = LazyLock::new(|| HashSet::with_capacity(64));
 
 #[derive(Clone)]
 pub struct Editing {
@@ -36,17 +42,29 @@ struct Vec2 {
     y: isize
 }
 
+impl Drop for Editing {
+    fn drop(&mut self) {
+        #[expect(static_mut_refs)]
+        unsafe { FILES.remove(&self.path); }
+    }
+}
+
 impl Editing {
-    pub fn new(path: PathBuf, i: Option<usize>) -> Self {
+    pub fn new(path: PathBuf, i: Option<usize>) -> Box<dyn PaneView<ViewEvent, Theme, In, Out>> {
+        #[expect(static_mut_refs)]
+        if unsafe { !FILES.insert(path.clone()) } {
+            return Box::new(MultipleOpens::new(path.clone()));
+        }
+
         let path = path.canonicalize().unwrap();
 
-        Self {
+        Box::new(Self {
             file:       Self::read_file(&path),
             path,
             scroll:     Vec2 { x: 0, y: 0 },
             pane_focus: true,
             i
-        }
+        })
     }
 
     fn read_file(path: &PathBuf) -> File {
@@ -73,7 +91,7 @@ impl Editing {
         (x, y)
     }
 
-    fn snap_to_cursor(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn snap_to_cursor(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let cursor     = self.file.cursors[0].clone();
         let old_scroll = self.scroll.clone();
 
@@ -97,7 +115,7 @@ impl Editing {
     }
 
     // TODO: merge cursors (could make an outside function, and its relevant in other places too)
-    fn warp_cursor(&mut self, x: u16, y: u16) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn warp_cursor(&mut self, x: u16, y: u16) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let old_cursor = self.file.cursors[0].clone();
 
         let y = {
@@ -128,12 +146,18 @@ impl Editing {
     }
 }
 
-impl PaneView<ViewEvent, Theme, (), String> for Editing {
-    fn custom(&self, _: ()) -> String {
-        self.path.file_name().unwrap().display().to_string()
+impl PaneView<ViewEvent, Theme, In, Out> for Editing {
+    fn custom(&self, theme: In) -> Out {
+        let text = self.path.file_name().unwrap().display().to_string();
+
+        if let Some(theme) = theme {
+            ColoredText { fg: theme.foreground, text }
+        } else {
+            ColoredText { fg: rgb(255, 0, 255), text }
+        }
     }
 
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, (), String>> {
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, In, Out>> {
         Box::new(self.clone())
     }
 
@@ -164,7 +188,7 @@ impl PaneView<ViewEvent, Theme, (), String> for Editing {
         }
     }
 
-    fn event(&mut self, event: Event, w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+    fn event(&mut self, event: Event, w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
         let w = w as usize;
         let h = h as usize;
 

@@ -2,9 +2,11 @@
 
 use spliterm::{PaneView, PaneCommand, Event};
 use spliterm::betterm;
+use betterm::color::rgb;
 use betterm::terminal::{KeyboardEvent, Key, MouseEvent, HoverEvent, MouseButtonEvent, MouseButton};
 use betterm::styled_printer::StyledPrinter;
 use crate::ViewEvent;
+use crate::{In, Out, ColoredText};
 use crate::config::Theme;
 use crate::view::{Editing, Browsing};
 use crate::utils::Utf8;
@@ -44,12 +46,16 @@ impl SaveDialog {
     }
 }
 
-impl PaneView<ViewEvent, Theme, (), String> for SaveDialog {
-    fn custom(&self, _: ()) -> String {
-        String::from("save?")
+impl PaneView<ViewEvent, Theme, In, Out> for SaveDialog {
+    fn custom(&self, theme: In) -> Out {
+        if let Some(theme) = theme {
+            ColoredText { fg: theme.yellow,     text: String::from("save?") }
+        } else {
+            ColoredText { fg: rgb(255, 0, 255), text: String::from("save?") }
+        }
     }
 
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, (), String>> {
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, In, Out>> {
         Box::new(self.clone())
     }
 
@@ -121,7 +127,7 @@ impl PaneView<ViewEvent, Theme, (), String> for SaveDialog {
         }
     }
 
-    fn event(&mut self, event: Event, _w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+    fn event(&mut self, event: Event, _w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
         let mid = h as usize / 2;
 
         match event {

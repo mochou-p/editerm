@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 use spliterm::{Screen, FocusDirection, PaneEvent, CollapseResult};
 use spliterm::betterm;
 use betterm::cursor;
-use betterm::{reset, color::{ansi, fg, RgbColor}};
+use betterm::{reset, color::{ansi, fg, rgb, RgbColor}};
 use betterm::terminal::{RawTerminal, Event, MouseEvent, HoverEvent, KeyboardEvent, Key, CtrlAltableChar, size};
 use config::Theme;
 use view::{Browsing, Editing, Tabs, Welcome};
@@ -38,11 +38,26 @@ fn main() {
     }
 }
 
+pub type In  = Option<Theme>;
+pub type Out = ColoredText;
+
+#[derive(Clone)]
+pub struct ColoredText {
+    pub fg:   RgbColor,
+    pub text: String
+}
+
+impl Default for ColoredText {
+    fn default() -> Self {
+        Self { fg: rgb(0, 0, 0), text: String::default() }
+    }
+}
+
 struct Editor {
     themes:   Vec<Theme>,
     theme:    usize,
     terminal: RawTerminal,
-    screen:   Screen<ViewEvent, Theme, (), String>,
+    screen:   Screen<ViewEvent, Theme, In, Out>,
     x:        u16,
     y:        u16,
     width:    u16,
@@ -83,7 +98,7 @@ impl Editor {
         Self { themes, theme, terminal, screen, x, y, width, height }
     }
 
-    fn screen_from_args(x: u16, y: u16, width: u16, height: u16, pane_separator: RgbColor) -> Screen<ViewEvent, Theme, (), String> {
+    fn screen_from_args(x: u16, y: u16, width: u16, height: u16, pane_separator: RgbColor) -> Screen<ViewEvent, Theme, In, Out> {
         let args = std::env::args().collect::<Vec<String>>();
 
         match args.len() {
@@ -98,7 +113,7 @@ impl Editor {
                     let view = Tabs::new(vec![Box::new(Browsing::new(Some(path), true, None))]);
                     Screen::new(x, y, width, height, view, pane_separator)
                 } else if path.is_file() {
-                    let view = Tabs::new(vec![Box::new(Editing::new(path, None))]);
+                    let view = Tabs::new(vec![Editing::new(path, None)]);
                     Screen::new(x, y, width, height, view, pane_separator)
                 } else {
                     panic!("{}invalid path{}", fg(ansi::red()), reset::fg())

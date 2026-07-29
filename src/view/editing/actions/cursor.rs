@@ -1,13 +1,13 @@
 // mochou-p/editerm/src/view/editing/actions/cursor.rs
 
 use spliterm::PaneCommand;
-use crate::ViewEvent;
+use crate::{ViewEvent, In, Out};
 use crate::config::Theme;
 use crate::utils::{self, ToWith, Utf8, word};
 
 
 impl super::super::Editing {
-    pub fn line_start(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn line_start(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -31,7 +31,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn line_end(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn line_end(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -57,7 +57,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn file_start(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn file_start(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -84,7 +84,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn file_end(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn file_end(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let     line_count = self.file.lines.len() as isize;
         let mut dirty      = false;
 
@@ -112,7 +112,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn up(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn up(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -145,7 +145,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn down(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn down(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -180,7 +180,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn left(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn left(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -210,7 +210,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn right(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn right(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -240,7 +240,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn prev_word(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn prev_word(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {
@@ -275,7 +275,7 @@ impl super::super::Editing {
         }
     }
 
-    pub fn next_word(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn next_word(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         for cursor in &mut self.file.cursors {

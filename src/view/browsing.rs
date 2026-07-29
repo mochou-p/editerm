@@ -5,11 +5,12 @@ use std::ffi::CString;
 use std::path::{Path, PathBuf};
 use spliterm::{PaneView, PaneCommand, Event, PaneEvent};
 use spliterm::betterm;
+use betterm::color::rgb;
 use betterm::styled_printer::StyledPrinter;
 use betterm::terminal::{KeyboardEvent, Key, MouseEvent, MouseButtonEvent, MouseButton, ScrollEvent, ScrollDirection, HoverEvent};
 use betterm::libc;
 use super::Editing;
-use crate::ViewEvent;
+use crate::{ViewEvent, In, Out, ColoredText};
 use crate::config::Theme;
 use crate::view::Welcome;
 
@@ -96,7 +97,7 @@ impl Browsing {
         self.parent.is_some() as usize + self.dirs.len() + self.files.len()
     }
 
-    fn snap_to_cursor(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn snap_to_cursor(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         if self.focused < self.scroll_y {
             self.scroll_y = self.focused;
             PaneCommand::RerenderMe
@@ -108,7 +109,7 @@ impl Browsing {
         }
     }
 
-    fn up(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn up(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         if self.focused != 0 {
             self.focused -= 1;
             self.snap_to_cursor(h);
@@ -118,7 +119,7 @@ impl Browsing {
         }
     }
 
-    fn down(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn down(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         if self.focused != self.dirs.len() + self.files.len() - self.parent.is_none() as usize {
             self.focused += 1;
             self.snap_to_cursor(h);
@@ -128,7 +129,7 @@ impl Browsing {
         }
     }
 
-    fn go_out(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn go_out(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         self.scroll_y = 0;
 
         let Some(parent) = self.parent.take() else { return PaneCommand::DoNothing; };
@@ -156,7 +157,7 @@ impl Browsing {
         PaneCommand::RerenderMe
     }
 
-    fn go_in(&mut self, h: usize) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+    fn go_in(&mut self, h: usize) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
         self.scroll_y = 0;
 
         let mut i = self.focused;
@@ -185,7 +186,9 @@ impl Browsing {
 
             let j       = self.parent.is_some() as usize + self.dirs.len() + i;
             let editing = Editing::new(self.files[i].path.clone(), Some(j));
-            (PaneCommand::ReplaceMe(Box::new(editing)), ViewEvent::DrawCursor(0, 0))
+
+            // TODO: Tabs could do the DrawCursor but idk
+            (PaneCommand::ReplaceMe(editing), ViewEvent::DrawCursor(0, 0))
         }
     }
 
@@ -242,7 +245,7 @@ impl Browsing {
         sp.bg(theme.background_disabled, " ".repeat(w as usize))
     }
 
-    fn scroll_dir(&mut self, direction: isize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn scroll_dir(&mut self, direction: isize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         match direction {
             -1 => self.scroll_up(),
             1  => self.scroll_down(),
@@ -250,7 +253,7 @@ impl Browsing {
         }
     }
 
-    fn scroll_down(&mut self) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn scroll_down(&mut self) -> PaneCommand<ViewEvent, Theme, In, Out> {
         if self.scroll_y != self.entry_count() - 1 {
             self.scroll_y += 1;
             PaneCommand::RerenderMe
@@ -259,7 +262,7 @@ impl Browsing {
         }
     }
 
-    fn scroll_up(&mut self) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn scroll_up(&mut self) -> PaneCommand<ViewEvent, Theme, In, Out> {
         if self.scroll_y != 0 {
             self.scroll_y -= 1;
             PaneCommand::RerenderMe
@@ -268,7 +271,7 @@ impl Browsing {
         }
     }
 
-    fn dir_start(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    fn dir_start(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let mut dirty = false;
 
         if self.focused != 0 {
@@ -288,7 +291,7 @@ impl Browsing {
         }
     }
 
-    pub fn dir_end(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
+    pub fn dir_end(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
         let     last_line = self.entry_count() - 1;
         let mut dirty     = false;
 
@@ -310,13 +313,19 @@ impl Browsing {
     }
 }
 
-impl PaneView<ViewEvent, Theme, (), String> for Browsing {
-    fn custom(&self, _: ()) -> String {
-        let s = self.current_dir.display().to_string();
-        format!("{}/", &s[s.rfind('/').unwrap()+1..])
+impl PaneView<ViewEvent, Theme, In, Out> for Browsing {
+    fn custom(&self, theme: In) -> Out {
+        let s    = self.current_dir.display().to_string();
+        let text = format!("{}/", &s[s.rfind('/').unwrap()+1..]);
+
+        if let Some(theme) = theme {
+            ColoredText { fg: theme.blue,       text }
+        } else {
+            ColoredText { fg: rgb(255, 0, 255), text }
+        }
     }
 
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, (), String>> {
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, In, Out>> {
         Box::new(self.clone())
     }
 
@@ -345,7 +354,7 @@ impl PaneView<ViewEvent, Theme, (), String> for Browsing {
         self.print_empty(sp, w, theme)
     }
 
-    fn event(&mut self, event: Event, _w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+    fn event(&mut self, event: Event, _w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
         let h = h as usize;
 
         (

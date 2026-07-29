@@ -2,9 +2,10 @@
 
 use spliterm::{PaneView, PaneCommand, Event};
 use spliterm::betterm;
+use betterm::color::rgb;
 use betterm::terminal::{KeyboardEvent, Key, MouseEvent, ScrollEvent, ScrollDirection};
 use betterm::styled_printer::StyledPrinter;
-use crate::ViewEvent;
+use crate::{ViewEvent, In, Out, ColoredText};
 use crate::config::Theme;
 use crate::utils::Utf8;
 use crate::view::Browsing;
@@ -12,21 +13,25 @@ use crate::view::Browsing;
 
 pub struct Welcome {
     scroll:   usize,
-    ancestor: Option<Box<dyn PaneView<ViewEvent, Theme, (), String>>>
+    ancestor: Option<Box<dyn PaneView<ViewEvent, Theme, In, Out>>>
 }
 
 impl Welcome {
-    pub fn new(ancestor: Option<Box<dyn PaneView<ViewEvent, Theme, (), String>>>) -> Self {
+    pub fn new(ancestor: Option<Box<dyn PaneView<ViewEvent, Theme, In, Out>>>) -> Self {
         Self { scroll: 0, ancestor }
     }
 }
 
-impl PaneView<ViewEvent, Theme, (), String> for Welcome {
-    fn custom(&self, _: ()) -> String {
-        String::from("welcome")
+impl PaneView<ViewEvent, Theme, In, Out> for Welcome {
+    fn custom(&self, theme: In) -> Out {
+        if let Some(theme) = theme {
+            ColoredText { fg: theme.green,      text: String::from("welcome") }
+        } else {
+            ColoredText { fg: rgb(255, 0, 255), text: String::from("welcome") }
+        }
     }
 
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, (), String>> {
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, In, Out>> {
         let ancestor = self.ancestor.as_ref().map(|ancestor| ancestor.pane_clone());
 
         Box::new(Welcome { scroll: self.scroll, ancestor })
@@ -117,7 +122,7 @@ impl PaneView<ViewEvent, Theme, (), String> for Welcome {
         }
     }
 
-    fn event(&mut self, event: Event, _w: u16, _h: u16) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+    fn event(&mut self, event: Event, _w: u16, _h: u16) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
         match event {
             Event::Keyboard(KeyboardEvent::NoModifiers(Key::Enter)) => {
                 if self.ancestor.is_none() {
