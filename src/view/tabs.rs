@@ -1,0 +1,319 @@
+// mochou-p/editerm/src/view/tabs.rs
+
+use spliterm::{PaneView, PaneCommand, Event};
+use spliterm::betterm;
+use betterm::terminal::{KeyboardEvent, Key, CtrlableChar, MouseEvent, MouseButtonEvent, MouseButton, ScrollEvent, ScrollDirection};
+use betterm::color::RgbColor;
+use betterm::styled_printer::StyledPrinter;
+use crate::ViewEvent;
+use crate::config::Theme;
+use crate::utils::Utf8;
+use crate::view::Browsing;
+
+
+pub struct Tabs {
+    views: Vec<Box<dyn PaneView<ViewEvent, Theme, (), String>>>,
+    view:  usize,
+    pages: Vec<Vec<usize>>,
+    page:  usize
+}
+
+impl Tabs {
+    pub fn new(views: Vec<Box<dyn PaneView<ViewEvent, Theme, (), String>>>) -> Self {
+        Self { views, view: 0, pages: vec![vec![0]], page: 0 }
+    }
+
+    fn open(&mut self, w: usize) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+        self.views.push(Box::new(Browsing::new(None, false, None)));
+        self.view = self.views.len() - 1;
+        self.redo_pages(w, true);
+
+        (PaneCommand::RerenderMe, ViewEvent::DoNothing)
+    }
+
+    fn close_i(&mut self, i: usize, w: usize) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+        self.views.remove(i);
+
+        if self.views.is_empty() {
+            (PaneCommand::DoNothing, ViewEvent::CloseMe)
+        } else {
+            if self.view > i {
+                self.view -= 1;
+            }
+            self.view = self.view.min(self.views.len() - 1);
+            self.redo_pages(w, true);
+
+            (PaneCommand::RerenderMe, ViewEvent::DoNothing)
+        }
+    }
+
+    fn next(&mut self, w: usize) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+        if self.views.len() == 1 {
+            (PaneCommand::DoNothing, ViewEvent::DoNothing)
+        } else {
+            self.view = (self.view + 1) % self.views.len();
+            self.redo_pages(w, true);
+
+            (PaneCommand::RerenderMe, ViewEvent::DoNothing)
+        }
+    }
+
+    fn prev(&mut self, w: usize) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+        if self.views.len() == 1 {
+            (PaneCommand::DoNothing, ViewEvent::DoNothing)
+        } else {
+            let i     = (self.view as isize - 1).rem_euclid(self.views.len() as isize);
+            self.view = i as usize;
+            self.redo_pages(w, true);
+
+            (PaneCommand::RerenderMe, ViewEvent::DoNothing)
+        }
+    }
+
+    fn redo_pages(&mut self, w: usize, go_to_it: bool) {
+        let mut page_x = 0;
+        let mut page   = 0;
+
+        self.pages    = vec![vec![]];
+        let   pos_len = self.page_pos().len();
+
+        for i in 0..self.views.len() {
+            let name_len = self.views[i].custom(()).utf8_len() as usize + 2;
+
+            if page_x + name_len + (3 * (i != self.views.len() - 1) as usize) + pos_len > w {
+                self.pages.push(vec![]);
+                page_x  = 3;
+                page   += 1;
+            }
+
+            if go_to_it && i == self.view {
+                self.page = page;
+            }
+
+            self.pages[page].push(i);
+
+            page_x += name_len;
+        }
+    }
+
+    fn mouse(&mut self, mouse_event: &MouseEvent, w: usize) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+        match mouse_event {
+            MouseEvent::Scroll(ScrollEvent::NoModifiers(ScrollDirection::Up(_x, _y))) => {
+                return self.prev(w);
+            },
+            MouseEvent::Scroll(ScrollEvent::NoModifiers(ScrollDirection::Down(_x, _y))) => {
+                return self.next(w);
+            },
+            MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(x, _y))) => {
+                let         x = *x as usize;
+                let mut tab_x = 0;
+
+                if self.pages.len() != 1 {
+                    tab_x += self.page_pos().len();
+                }
+
+                if self.page != 0 {
+                    if x < tab_x + 3 {
+                        self.page -= 1;
+                        return (PaneCommand::RerenderMe, ViewEvent::DoNothing);
+                    }
+
+                    tab_x += 3;
+                }
+
+                if self.page != self.pages.len() - 1 {
+                    if x >= w - 3 && x < w {
+                        self.page += 1;
+                        return (PaneCommand::RerenderMe, ViewEvent::DoNothing);
+                    }
+                }
+
+                for i in &self.pages[self.page] {
+                    let view  = &self.views[*i];
+                    let tab_w = view.custom(()).utf8_len() as usize + 2;
+
+                    if x >= tab_x && x < tab_x + tab_w {
+                        if *i == self.view {
+                            break;
+                        } else {
+                            self.view = *i;
+                            return (PaneCommand::RerenderMe, ViewEvent::DoNothing);
+                        }
+                    }
+
+                    tab_x += tab_w;
+                }
+            },
+            MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Middle(x, _y))) => {
+                let         x = *x as usize;
+                let mut tab_x = 0;
+
+                if self.pages.len() != 1 {
+                    tab_x += self.page_pos().len();
+                }
+
+                if self.page != 0 {
+                    if x < tab_x + 3 {
+                        return (PaneCommand::DoNothing, ViewEvent::DoNothing);
+                    }
+
+                    tab_x += 3;
+                }
+
+                if self.page != self.pages.len() - 1 {
+                    if x >= w - 3 && x < w {
+                        return (PaneCommand::DoNothing, ViewEvent::DoNothing);
+                    }
+                }
+
+                for i in &self.pages[self.page] {
+                    let view  = &self.views[*i];
+                    let tab_w = view.custom(()).utf8_len() as usize + 2;
+
+                    if x >= tab_x && x < tab_x + tab_w {
+                        return self.close_i(*i, w);
+                    }
+
+                    tab_x += tab_w;
+                }
+            },
+            _ => ()
+        }
+
+        (PaneCommand::DoNothing, ViewEvent::DoNothing)
+    }
+
+    fn page_pos(&self) -> String {
+        format!(" {}/{} ", self.page + 1, self.pages.len())
+    }
+
+    fn left_arrow_bg(&self, theme: &Theme) -> RgbColor {
+        if self.view < self.pages[self.page][0] {
+            theme.background_selected
+        } else {
+            theme.background
+        }
+    }
+
+    fn right_arrow_bg(&self, theme: &Theme) -> RgbColor {
+        if self.view > self.pages[self.page][self.pages[self.page].len() - 1] {
+            theme.background_selected
+        } else {
+            theme.background
+        }
+    }
+
+    fn top_bar(&self, mut w: usize, mut sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
+        let mut printed_w = 0;
+
+        if self.pages.len() != 1 {
+            let pos    = self.page_pos();
+            sp         = sp.with_bg(theme.background_disabled, |sp| sp.fg(theme.foreground_disabled, &pos));
+            printed_w += pos.len();
+        }
+
+        if self.page != 0 {
+            sp = sp.with_bg(self.left_arrow_bg(theme), |sp| {
+                sp
+                    .fg(theme.background_disabled, "▏")
+                    .fg(theme.foreground_disabled, "< ")
+            });
+
+            printed_w += 3;
+        }
+
+        let not_last = self.page != self.pages.len() - 1;
+        if  not_last {
+            w -= 3;
+        }
+
+        for i in &self.pages[self.page] {
+            let name = self.views[*i].custom(());
+
+            sp = sp.with_bg(if *i == self.view { theme.background_selected } else { theme.background }, |sp| {
+                if self.pages.len() != 1 {
+                    sp
+                        .fg(theme.background_disabled, "▏")
+                        .fg(theme.foreground,          format!("{name} "))
+                } else {
+                    sp.fg(theme.foreground, format!(" {name} "))
+                }
+            });
+
+            printed_w += name.utf8_len() as usize + 2;
+        }
+
+        sp = sp.bg(theme.background_disabled, " ".repeat(w - printed_w));
+
+        if not_last {
+            sp.with_bg(self.right_arrow_bg(theme), |sp| {
+                sp
+                    .fg(theme.background_disabled, "▏")
+                    .fg(theme.foreground_disabled, "> ")
+            })
+        } else {
+            sp
+        }
+    }
+}
+
+impl PaneView<ViewEvent, Theme, (), String> for Tabs {
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, (), String>> {
+        let views = self.views.iter().map(|view| view.pane_clone()).collect();
+
+        Box::new(Tabs { views, view: self.view, pages: self.pages.clone(), page: self.page })
+    }
+
+    fn print_line(&mut self, i: usize, w: u16, h: u16, sp: StyledPrinter, theme: &Theme) -> StyledPrinter {
+        if i == 0 {
+            self.top_bar(w as usize, sp, theme)
+        } else {
+            self.views[self.view].print_line(i - 1, w, h - 1, sp, theme)
+        }
+    }
+
+    fn event(&mut self, mut event: Event, w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
+        let w = w as usize;
+
+        match &mut event {
+            Event::Keyboard(KeyboardEvent::Ctrl     (Key::Tab)) => { return self.next(w); },
+            Event::Keyboard(KeyboardEvent::CtrlShift(Key::Tab)) => { return self.prev(w); },
+            Event::Keyboard(KeyboardEvent::CtrlChar (      ch)) => match ch {
+                CtrlableChar::T => { return self.   open(           w); },
+                CtrlableChar::W => { return self.close_i(self.view, w); },
+                _               => ()
+            },
+            Event::Mouse(mouse_event) => {
+                let (_x, y) = mouse_event.cell();
+
+                if y == 0 {
+                    return self.mouse(mouse_event, w);
+                } else {
+                    mouse_event.correct_by(0, 1);
+                }
+            },
+            _ => ()
+        }
+
+        let (pane_command, mut view_event) = self.views[self.view].event(event, w as u16, h);
+
+        match &mut view_event {
+            ViewEvent::CloseMe           => { return self.close_i(self.view, w); },
+            ViewEvent::DrawCursor(_x, y) => { *y += 1;                           },
+            _                            => ()
+        }
+
+        if let PaneCommand::ReplaceMe(replacement) = pane_command {
+            self.views[self.view] = replacement;
+            self.redo_pages(w, true);
+            return (PaneCommand::RerenderMe, ViewEvent::DoNothing);
+        }
+
+        if matches!(pane_command, PaneCommand::RerenderMe) {
+            // TODO: but a real tabname changed event would be better :D
+            self.redo_pages(w, false);
+        }
+
+        (pane_command, view_event)
+    }
+}

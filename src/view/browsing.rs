@@ -96,7 +96,7 @@ impl Browsing {
         self.parent.is_some() as usize + self.dirs.len() + self.files.len()
     }
 
-    fn snap_to_cursor(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+    fn snap_to_cursor(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
         if self.focused < self.scroll_y {
             self.scroll_y = self.focused;
             PaneCommand::RerenderMe
@@ -108,7 +108,7 @@ impl Browsing {
         }
     }
 
-    fn up(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+    fn up(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
         if self.focused != 0 {
             self.focused -= 1;
             self.snap_to_cursor(h);
@@ -118,7 +118,7 @@ impl Browsing {
         }
     }
 
-    fn down(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+    fn down(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
         if self.focused != self.dirs.len() + self.files.len() - self.parent.is_none() as usize {
             self.focused += 1;
             self.snap_to_cursor(h);
@@ -128,7 +128,7 @@ impl Browsing {
         }
     }
 
-    fn go_out(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+    fn go_out(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
         self.scroll_y = 0;
 
         let Some(parent) = self.parent.take() else { return PaneCommand::DoNothing; };
@@ -156,7 +156,7 @@ impl Browsing {
         PaneCommand::RerenderMe
     }
 
-    fn go_in(&mut self, h: usize) -> (PaneCommand<ViewEvent, Theme>, ViewEvent) {
+    fn go_in(&mut self, h: usize) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
         self.scroll_y = 0;
 
         let mut i = self.focused;
@@ -242,7 +242,7 @@ impl Browsing {
         sp.bg(theme.background_disabled, " ".repeat(w as usize))
     }
 
-    fn scroll_dir(&mut self, direction: isize) -> PaneCommand<ViewEvent, Theme> {
+    fn scroll_dir(&mut self, direction: isize) -> PaneCommand<ViewEvent, Theme, (), String> {
         match direction {
             -1 => self.scroll_up(),
             1  => self.scroll_down(),
@@ -250,7 +250,7 @@ impl Browsing {
         }
     }
 
-    fn scroll_down(&mut self) -> PaneCommand<ViewEvent, Theme> {
+    fn scroll_down(&mut self) -> PaneCommand<ViewEvent, Theme, (), String> {
         if self.scroll_y != self.entry_count() - 1 {
             self.scroll_y += 1;
             PaneCommand::RerenderMe
@@ -259,7 +259,7 @@ impl Browsing {
         }
     }
 
-    fn scroll_up(&mut self) -> PaneCommand<ViewEvent, Theme> {
+    fn scroll_up(&mut self) -> PaneCommand<ViewEvent, Theme, (), String> {
         if self.scroll_y != 0 {
             self.scroll_y -= 1;
             PaneCommand::RerenderMe
@@ -268,7 +268,7 @@ impl Browsing {
         }
     }
 
-    fn dir_start(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+    fn dir_start(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
         let mut dirty = false;
 
         if self.focused != 0 {
@@ -288,7 +288,7 @@ impl Browsing {
         }
     }
 
-    pub fn dir_end(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme> {
+    pub fn dir_end(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
         let     last_line = self.entry_count() - 1;
         let mut dirty     = false;
 
@@ -310,8 +310,13 @@ impl Browsing {
     }
 }
 
-impl PaneView<ViewEvent, Theme> for Browsing {
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme>> {
+impl PaneView<ViewEvent, Theme, (), String> for Browsing {
+    fn custom(&self, _: ()) -> String {
+        let s = self.current_dir.display().to_string();
+        format!("{}/", &s[s.rfind('/').unwrap()+1..])
+    }
+
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, (), String>> {
         Box::new(self.clone())
     }
 
@@ -340,7 +345,7 @@ impl PaneView<ViewEvent, Theme> for Browsing {
         self.print_empty(sp, w, theme)
     }
 
-    fn event(&mut self, event: Event, _w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme>, ViewEvent) {
+    fn event(&mut self, event: Event, _w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
         let h = h as usize;
 
         (

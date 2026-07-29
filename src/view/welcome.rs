@@ -12,17 +12,21 @@ use crate::view::Browsing;
 
 pub struct Welcome {
     scroll:   usize,
-    ancestor: Option<Box<dyn PaneView<ViewEvent, Theme>>>
+    ancestor: Option<Box<dyn PaneView<ViewEvent, Theme, (), String>>>
 }
 
 impl Welcome {
-    pub fn new(ancestor: Option<Box<dyn PaneView<ViewEvent, Theme>>>) -> Self {
+    pub fn new(ancestor: Option<Box<dyn PaneView<ViewEvent, Theme, (), String>>>) -> Self {
         Self { scroll: 0, ancestor }
     }
 }
 
-impl PaneView<ViewEvent, Theme> for Welcome {
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme>> {
+impl PaneView<ViewEvent, Theme, (), String> for Welcome {
+    fn custom(&self, _: ()) -> String {
+        String::from("welcome")
+    }
+
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, (), String>> {
         let ancestor = self.ancestor.as_ref().map(|ancestor| ancestor.pane_clone());
 
         Box::new(Welcome { scroll: self.scroll, ancestor })
@@ -58,7 +62,7 @@ impl PaneView<ViewEvent, Theme> for Welcome {
             10   => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
             11   => sp.with_bg(bg, |sp| sp.fg(fgb, fill(w,         "  GLOBAL KEYBINDS"                                                                       ))),
             12   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    F1                       = Open the help screen"                                     ))),
-            13   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + T                 = Cycle color themes"                                       ))),
+            13   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Alt + T           = Cycle color themes"                                       ))),
             14   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w, format!("    Ctrl + Escape            = Exit {bin}"                                              )))),
             15   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Alt  + ArrowUp           = Focus the pane        above"                              ))),
             16   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Alt  + ArrowDown         = Focus the pane        below"                              ))),
@@ -69,46 +73,51 @@ impl PaneView<ViewEvent, Theme> for Welcome {
             21   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Alt + ArrowLeft   = Split the focused pane horizontally and focus the   left" ))),
             22   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Alt + ArrowRight  = Split the focused pane horizontally and focus the  right" ))),
             23   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Alt + Backspace   = Close the focused pane"                                   ))),
-            24   => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
-            25   => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
-            26   => sp.with_bg(bg, |sp| sp.fg(fgb, fill(w,         "  DIRECTORY KEYBINDS"                                                                    ))),
-            27   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowUp                  = Select the entry above"                                   ))),
-            28   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowUp                  = Select the entry above"                                   ))),
-            29   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Home                     = Select the first entry"                                   ))),
-            30   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    End                      = Select the last  entry"                                   ))),
-            31   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowLeft  / Backspace   = Enter the parent   directory"                             ))),
-            32   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowRight / Enter       = Enter the selected directory or file"                     ))),
-            33   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Escape                   = Close this view"                                          ))),
-            34   => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
-            35   => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
-            36   => sp.with_bg(bg, |sp| sp.fg(fgb, fill(w,         "  FILE KEYBINDS"                                                                         ))),
-            37   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowUp                  = Move the cursor    up"                                    ))),
-            38   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowDown                = Move the cursor  down"                                    ))),
-            39   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowLeft                = Move the cursor  left"                                    ))),
-            40   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowRight               = Move the cursor right"                                    ))),
-            41   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowLeft         = Move the cursor to the previous separator"                ))),
-            42   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowRight        = Move the cursor to the     next separator"                ))),
-            43   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Home                     = Move the cursor to the start of the line"                 ))),
-            44   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    End                      = Move the cursor to the   end of the line"                 ))),
-            45   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Home              = Move the cursor to the first        line"                 ))),
-            46   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + End               = Move the cursor to the  last        line"                 ))),
-            47   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Backspace                = Erase character to the  left of the cursor"               ))),
-            48   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Delete                   = Erase character to the right of the cursor"               ))),
-            49   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Backspace         = Erase to the  left from the cursor until separator"       ))),
-            50   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Delete            = Erase to the right from the cursor until separator"       ))),
-            51   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowUp           = Scroll 5    lines    up"                                  ))),
-            52   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowDown         = Scroll 5    lines  down"                                  ))),
-            53   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    PageUp                   = Scroll full height   up"                                  ))),
-            54   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    PageDown                 = Scroll full height down"                                  ))),
-            55   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Enter                    = Insert a newline"                                         ))),
-            56   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Tab                      = Insert spaces to reach the closest tabstop to the right"  ))),
-            57   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + S                 = Save file"                                                ))),
-            58   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Escape                   = Browse the parent directory"                              ))),
-            59.. => sp.     bg(bg,                 fill(w,         ""                                                                                         ))
+            24   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + T                 = Open a new tab in current pane"                           ))),
+            25   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + W                 = Close the current tab"                                    ))),
+            26   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Tab               = Switch to the     next tab"                               ))),
+            27   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Shift + Tab       = Switch to the previous tab"                               ))),
+            28   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Alt  + <NUMBER>          = Switch to nth tab"                                        ))),
+            29   => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
+            30   => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
+            31   => sp.with_bg(bg, |sp| sp.fg(fgb, fill(w,         "  DIRECTORY KEYBINDS"                                                                    ))),
+            32   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowUp                  = Select the entry above"                                   ))),
+            33   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowUp                  = Select the entry above"                                   ))),
+            34   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Home                     = Select the first entry"                                   ))),
+            35   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    End                      = Select the last  entry"                                   ))),
+            36   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowLeft  / Backspace   = Enter the parent   directory"                             ))),
+            37   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowRight / Enter       = Enter the selected directory or file"                     ))),
+            38   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Escape                   = Close this view"                                          ))),
+            39   => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
+            40   => sp.     bg(bg,                 fill(w,         ""                                                                                         )),
+            41   => sp.with_bg(bg, |sp| sp.fg(fgb, fill(w,         "  FILE KEYBINDS"                                                                         ))),
+            42   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowUp                  = Move the cursor    up"                                    ))),
+            43   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowDown                = Move the cursor  down"                                    ))),
+            44   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowLeft                = Move the cursor  left"                                    ))),
+            45   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    ArrowRight               = Move the cursor right"                                    ))),
+            46   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowLeft         = Move the cursor to the previous separator"                ))),
+            47   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowRight        = Move the cursor to the     next separator"                ))),
+            48   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Home                     = Move the cursor to the start of the line"                 ))),
+            49   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    End                      = Move the cursor to the   end of the line"                 ))),
+            50   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Home              = Move the cursor to the first        line"                 ))),
+            51   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + End               = Move the cursor to the  last        line"                 ))),
+            52   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Backspace                = Erase character to the  left of the cursor"               ))),
+            53   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Delete                   = Erase character to the right of the cursor"               ))),
+            54   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Backspace         = Erase to the  left from the cursor until separator"       ))),
+            55   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + Delete            = Erase to the right from the cursor until separator"       ))),
+            56   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowUp           = Scroll 5    lines    up"                                  ))),
+            57   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + ArrowDown         = Scroll 5    lines  down"                                  ))),
+            58   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    PageUp                   = Scroll full height   up"                                  ))),
+            59   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    PageDown                 = Scroll full height down"                                  ))),
+            60   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Enter                    = Insert a newline"                                         ))),
+            61   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Tab                      = Insert spaces to reach the closest tabstop to the right"  ))),
+            62   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Ctrl + S                 = Save file"                                                ))),
+            63   => sp.with_bg(bg, |sp| sp.fg(fg,  fill(w,         "    Escape                   = Browse the parent directory"                              ))),
+            64.. => sp.     bg(bg,                 fill(w,         ""                                                                                         ))
         }
     }
 
-    fn event(&mut self, event: Event, _w: u16, _h: u16) -> (PaneCommand<ViewEvent, Theme>, ViewEvent) {
+    fn event(&mut self, event: Event, _w: u16, _h: u16) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
         match event {
             Event::Keyboard(KeyboardEvent::NoModifiers(Key::Enter)) => {
                 if self.ancestor.is_none() {

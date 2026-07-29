@@ -73,7 +73,7 @@ impl Editing {
         (x, y)
     }
 
-    fn snap_to_cursor(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme> {
+    fn snap_to_cursor(&mut self, w: usize, h: usize) -> PaneCommand<ViewEvent, Theme, (), String> {
         let cursor     = self.file.cursors[0].clone();
         let old_scroll = self.scroll.clone();
 
@@ -97,7 +97,7 @@ impl Editing {
     }
 
     // TODO: merge cursors (could make an outside function, and its relevant in other places too)
-    fn warp_cursor(&mut self, x: u16, y: u16) -> PaneCommand<ViewEvent, Theme> {
+    fn warp_cursor(&mut self, x: u16, y: u16) -> PaneCommand<ViewEvent, Theme, (), String> {
         let old_cursor = self.file.cursors[0].clone();
 
         let y = {
@@ -128,8 +128,12 @@ impl Editing {
     }
 }
 
-impl PaneView<ViewEvent, Theme> for Editing {
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme>> {
+impl PaneView<ViewEvent, Theme, (), String> for Editing {
+    fn custom(&self, _: ()) -> String {
+        self.path.file_name().unwrap().display().to_string()
+    }
+
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, (), String>> {
         Box::new(self.clone())
     }
 
@@ -160,7 +164,7 @@ impl PaneView<ViewEvent, Theme> for Editing {
         }
     }
 
-    fn event(&mut self, event: Event, w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme>, ViewEvent) {
+    fn event(&mut self, event: Event, w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
         let w = w as usize;
         let h = h as usize;
 

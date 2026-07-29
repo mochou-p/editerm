@@ -44,8 +44,12 @@ impl SaveDialog {
     }
 }
 
-impl PaneView<ViewEvent, Theme> for SaveDialog {
-    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme>> {
+impl PaneView<ViewEvent, Theme, (), String> for SaveDialog {
+    fn custom(&self, _: ()) -> String {
+        String::from("save?")
+    }
+
+    fn pane_clone(&self) -> Box<dyn PaneView<ViewEvent, Theme, (), String>> {
         Box::new(self.clone())
     }
 
@@ -117,7 +121,7 @@ impl PaneView<ViewEvent, Theme> for SaveDialog {
         }
     }
 
-    fn event(&mut self, event: Event, _w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme>, ViewEvent) {
+    fn event(&mut self, event: Event, _w: u16, h: u16) -> (PaneCommand<ViewEvent, Theme, (), String>, ViewEvent) {
         let mid = h as usize / 2;
 
         match event {
