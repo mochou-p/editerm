@@ -9,7 +9,7 @@ use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::panic::{set_hook, take_hook, catch_unwind, AssertUnwindSafe};
 use std::sync::OnceLock;
-use spliterm::{Screen, FocusDirection, PaneEvent, CollapseResult};
+use spliterm::{Screen, FocusDirection, PaneEvent, CollapseResult, PaneView};
 use spliterm::betterm;
 use betterm::cursor;
 use betterm::{reset, color::{ansi, fg, rgb, RgbColor}};
@@ -101,34 +101,26 @@ impl Editor {
     fn screen_from_args(x: u16, y: u16, width: u16, height: u16, pane_separator: RgbColor) -> Screen<ViewEvent, Theme, In, Out> {
         let args = std::env::args().collect::<Vec<String>>();
 
-        match args.len() {
-            1 => {
-                let view = Tabs::new(vec![Box::new(Welcome::new(None))]);
-                Screen::new(0, 0, width, height, view, pane_separator)
-            },
-            2 => {
-                let path = PathBuf::from(&args[1]);
-
-                if path.is_dir() {
-                    let view = Tabs::new(vec![Box::new(Browsing::new(Some(path), true, None))]);
-                    Screen::new(x, y, width, height, view, pane_separator)
-                } else if path.is_file() {
-                    let view = Tabs::new(vec![Editing::new(path, None)]);
-                    Screen::new(x, y, width, height, view, pane_separator)
-                } else {
-                    panic!("{}invalid path{}", fg(ansi::red()), reset::fg())
-                }
-            },
-            _ => panic!(
-                "{}invalid arguments{}\nusage: {}{}\n       {} <PATH>{}",
-                fg(ansi::red()),
-                reset::fg(),
-                fg(ansi::green()),
-                args[0],
-                args[0],
-                reset::fg()
-            )
+        if args.len() == 1 {
+            let view = Tabs::new(vec![Box::new(Welcome::new(None))]);
+            return Screen::new(0, 0, width, height, view, pane_separator);
         }
+
+        let mut views = Vec::<Box<dyn PaneView<ViewEvent, Theme, In, Out>>>::with_capacity(args.len());
+
+        for arg in &args[1..] {
+            let path = PathBuf::from(arg).canonicalize().unwrap();
+
+            if path.is_dir() {
+                views.push(Box::new(Browsing::new(Some(path), None)));
+            } else if path.is_file() {
+                views.push(Editing::new(path, None));
+            } else {
+                panic!("{}invalid path{}", fg(ansi::red()), reset::fg())
+            }
+        }
+
+        Screen::new(x, y, width, height, Tabs::new(views), pane_separator)
     }
 
     fn run(mut self) -> bool {
@@ -165,6 +157,7 @@ impl Editor {
     }
 
     fn inner_run(&mut self) {
+        self.screen.event(Event::Custom(PaneEvent::FocusGained), &mut self.terminal, true, &self.themes[self.theme]);
         self.screen.render_all(&mut self.terminal, &self.themes[self.theme]);
         self.terminal.flush().unwrap();
 
@@ -293,25 +286,25 @@ impl Editor {
                         continue;
                     },
                     KeyboardEvent::CtrlAlt(Key::ArrowUp) => {
-                        self.screen.panes.vertical_split(Tabs::new(vec![Box::new(Browsing::new(None, false, None))]), true);
+                        self.screen.panes.vertical_split(Tabs::new(vec![Box::new(Browsing::new(None, None))]), true);
                         self.screen.render_all(&mut self.terminal, &self.themes[self.theme]);
                         self.terminal.flush().unwrap();
                         continue;
                     },
                     KeyboardEvent::CtrlAlt(Key::ArrowDown) => {
-                        self.screen.panes.vertical_split(Tabs::new(vec![Box::new(Browsing::new(None, false, None))]), false);
+                        self.screen.panes.vertical_split(Tabs::new(vec![Box::new(Browsing::new(None, None))]), false);
                         self.screen.render_all(&mut self.terminal, &self.themes[self.theme]);
                         self.terminal.flush().unwrap();
                         continue;
                     },
                     KeyboardEvent::CtrlAlt(Key::ArrowLeft) => {
-                        self.screen.panes.horizontal_split(Tabs::new(vec![Box::new(Browsing::new(None, false, None))]), true);
+                        self.screen.panes.horizontal_split(Tabs::new(vec![Box::new(Browsing::new(None, None))]), true);
                         self.screen.render_all(&mut self.terminal, &self.themes[self.theme]);
                         self.terminal.flush().unwrap();
                         continue;
                     },
                     KeyboardEvent::CtrlAlt(Key::ArrowRight) => {
-                        self.screen.panes.horizontal_split(Tabs::new(vec![Box::new(Browsing::new(None, false, None))]), false);
+                        self.screen.panes.horizontal_split(Tabs::new(vec![Box::new(Browsing::new(None, None))]), false);
                         self.screen.render_all(&mut self.terminal, &self.themes[self.theme]);
                         self.terminal.flush().unwrap();
                         continue;

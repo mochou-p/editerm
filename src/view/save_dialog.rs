@@ -158,7 +158,6 @@ impl PaneView<ViewEvent, Theme, In, Out> for SaveDialog {
                             Box::new(
                                 Browsing::new(
                                     Some(self.editing.path.parent().unwrap().to_path_buf()),
-                                    false,
                                     self.editing.i
                                 )
                             )
@@ -192,7 +191,6 @@ impl PaneView<ViewEvent, Theme, In, Out> for SaveDialog {
                                 Box::new(
                                     Browsing::new(
                                         Some(self.editing.path.parent().unwrap().to_path_buf()),
-                                        false,
                                         self.editing.i
                                     )
                                 )

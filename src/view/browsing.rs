@@ -51,16 +51,8 @@ impl From<PathBuf> for BrowserEntry {
 }
 
 impl Browsing {
-    pub fn new(path: Option<PathBuf>, cd_there: bool, i: Option<usize>) -> Self {
-        let current_dir = if let Some(path) = path {
-            if cd_there {
-                std::env::set_current_dir(&path).unwrap();
-            }
-            path
-        } else {
-            std::env::current_dir().unwrap()
-        };
-
+    pub fn new(path: Option<PathBuf>, i: Option<usize>) -> Self {
+        let current_dir = path.unwrap_or_else(|| std::env::current_dir().unwrap());
         let current_dir = current_dir.canonicalize().unwrap();
 
         let (parent, dirs, files) = Self::load(&current_dir);

@@ -24,7 +24,7 @@ impl Tabs {
     }
 
     fn open(&mut self, w: usize, theme: Option<Theme>) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
-        self.views.push(Box::new(Browsing::new(None, false, None)));
+        self.views.push(Box::new(Browsing::new(None, None)));
         self.view = self.views.len() - 1;
         self.redo_pages(w, true, theme);
 
@@ -64,6 +64,19 @@ impl Tabs {
         } else {
             let i     = (self.view as isize - 1).rem_euclid(self.views.len() as isize);
             self.view = i as usize;
+            self.redo_pages(w, true, theme);
+
+            (PaneCommand::RerenderMe, ViewEvent::DoNothing)
+        }
+    }
+
+    fn nth(&mut self, i: usize, w: usize, theme: Option<Theme>) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
+        let i = i.min(self.views.len() - 1);
+
+        if self.view == i {
+            (PaneCommand::DoNothing, ViewEvent::DoNothing)
+        } else {
+            self.view = i;
             self.redo_pages(w, true, theme);
 
             (PaneCommand::RerenderMe, ViewEvent::DoNothing)
@@ -282,6 +295,19 @@ impl PaneView<ViewEvent, Theme, In, Out> for Tabs {
                 CtrlableChar::T => { return self.   open(           w, None); },
                 CtrlableChar::W => { return self.close_i(self.view, w, None); },
                 _               => ()
+            },
+            Event::Keyboard(KeyboardEvent::AltChar(ch)) => match ch {
+                '1' => { return self.nth(0, w, None); },
+                '2' => { return self.nth(1, w, None); },
+                '3' => { return self.nth(2, w, None); },
+                '4' => { return self.nth(3, w, None); },
+                '5' => { return self.nth(4, w, None); },
+                '6' => { return self.nth(5, w, None); },
+                '7' => { return self.nth(6, w, None); },
+                '8' => { return self.nth(7, w, None); },
+                '9' => { return self.nth(8, w, None); },
+                '0' => { return self.nth(9, w, None); },
+                _   => ()
             },
             Event::Mouse(mouse_event) => {
                 let (_x, y) = mouse_event.cell();

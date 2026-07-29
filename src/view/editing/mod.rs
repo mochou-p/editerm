@@ -42,6 +42,9 @@ struct Vec2 {
     y: isize
 }
 
+// TODO: the timing here is a bit awkward since pane_clone Drops the original,
+//       but it should stay there, so since the order is wrong, i could just
+//       change it to a HashMap with a value of a counter for each PathBuf
 impl Drop for Editing {
     fn drop(&mut self) {
         #[expect(static_mut_refs)]
@@ -215,7 +218,6 @@ impl PaneView<ViewEvent, Theme, In, Out> for Editing {
                                         Box::new(
                                             Browsing::new(
                                                 Some(self.path.parent().unwrap().to_path_buf()),
-                                                false,
                                                 self.i
                                             )
                                         )
