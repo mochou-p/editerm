@@ -121,66 +121,92 @@ impl Browsing {
         }
     }
 
-    fn go_out(&mut self, h: usize) -> PaneCommand<ViewEvent, Theme, In, Out> {
-        self.scroll_y = 0;
+    fn _go_out(this: &mut Self, parent: BrowserEntry, h: usize) {
+        let old_dir = this.current_dir.clone();
+        this.focuses.insert(old_dir.clone(), this.focused);
 
-        let Some(parent) = self.parent.take() else { return PaneCommand::DoNothing; };
+        this.current_dir                     = parent.path;
+        (this.parent, this.dirs, this.files) = Self::load(&this.current_dir);
 
-        let old_dir = self.current_dir.clone();
-        self.focuses.insert(old_dir.clone(), self.focused);
-
-        self.current_dir                     = parent.path;
-        (self.parent, self.dirs, self.files) = Self::load(&self.current_dir);
-
-        self.focused = self.focuses.get(&self.current_dir)
+        this.focused = this.focuses.get(&this.current_dir)
             .map_or_else(
-                | | {
-                    self.dirs
+                || {
+                    this.dirs
                         .iter()
                         .position(|entry| entry.path == old_dir)
                         .unwrap()
-                    + self.parent.is_some() as usize
+                    + this.parent.is_some() as usize
                 },
                 |i| *i
             );
 
-        self.snap_to_cursor(h);
-
-        PaneCommand::RerenderMe
+        this.snap_to_cursor(h);
     }
 
-    fn go_in(&mut self, h: usize) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
+    fn go_out(&mut self, h: usize, newtab: bool) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
+        self.scroll_y = 0;
+
+        let Some(parent) = self.parent.clone() else { return (PaneCommand::DoNothing, ViewEvent::DoNothing); };
+
+        if newtab {
+            let mut newone = self.clone();
+            Self::_go_out(&mut newone, parent, h);
+
+            (PaneCommand::DoNothing, ViewEvent::Open(Box::new(newone)))
+        } else {
+            Self::_go_out(self, parent, h);
+
+            (PaneCommand::RerenderMe, ViewEvent::DoNothing)
+        }
+    }
+
+    fn _go_in_dir(this: &mut Self, i: usize, h: usize) {
+        this.focuses.insert(this.current_dir.clone(), this.focused);
+
+        this.current_dir                     = this.dirs.remove(i).path;
+        (this.parent, this.dirs, this.files) = Self::load(&this.current_dir);
+
+        this.focused = this.focuses.get(&this.current_dir).map_or_else(|| 0, |i| *i);
+
+        this.snap_to_cursor(h);
+    }
+
+    fn go_in(&mut self, h: usize, newtab: bool) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
         self.scroll_y = 0;
 
         let mut i = self.focused;
 
         if self.parent.is_some() {
             if i == 0 {
-                return (self.go_out(h), ViewEvent::DoNothing);
+                return self.go_out(h, newtab);
             }
 
             i -= 1;
         }
 
         if i < self.dirs.len() {
-            self.focuses.insert(self.current_dir.clone(), self.focused);
+            if newtab {
+                let mut newone = self.clone();
+                Self::_go_in_dir(&mut newone, i, h);
 
-            self.current_dir                     = self.dirs.remove(i).path;
-            (self.parent, self.dirs, self.files) = Self::load(&self.current_dir);
+                (PaneCommand::DoNothing, ViewEvent::Open(Box::new(newone)))
+            } else {
+                Self::_go_in_dir(self, i, h);
 
-            self.focused = self.focuses.get(&self.current_dir).map_or_else(|| 0, |i| *i);
-
-            self.snap_to_cursor(h);
-
-            (PaneCommand::RerenderMe, ViewEvent::DoNothing)
+                (PaneCommand::RerenderMe, ViewEvent::DoNothing)
+            }
         } else {
             i -= self.dirs.len() + self.parent.is_some() as usize - 1;
 
             let j       = self.parent.is_some() as usize + self.dirs.len() + i;
             let editing = Editing::new(self.files[i].path.clone(), Some(j));
 
-            // TODO: Tabs could do the DrawCursor but idk
-            (PaneCommand::ReplaceMe(editing), ViewEvent::DrawCursor(0, 0))
+            if newtab {
+                (PaneCommand::DoNothing, ViewEvent::Open(editing))
+            } else {
+                // TODO: Tabs could do the DrawCursor but idk
+                (PaneCommand::ReplaceMe(editing), ViewEvent::DrawCursor(0, 0))
+            }
         }
     }
 
@@ -303,6 +329,17 @@ impl Browsing {
             other => other
         }
     }
+
+    fn open(&mut self, h: usize, y: u16, newtab: bool) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
+        let y = y as usize + self.scroll_y;
+
+        if y < self.entry_count() {
+            self.focused = y;
+            self.go_in(h, newtab)
+        } else {
+            (PaneCommand::DoNothing, ViewEvent::DoNothing)
+        }
+    }
 }
 
 impl PaneView<ViewEvent, Theme, In, Out> for Browsing {
@@ -365,28 +402,22 @@ impl PaneView<ViewEvent, Theme, In, Out> for Browsing {
                         );
                     },
                     Key::Escape                  => { return (PaneCommand::DoNothing,  ViewEvent::CloseMe); },
-                    Key::ArrowUp                 =>          self.up       (h),
-                    Key::ArrowDown               =>          self.down     (h),
-                    Key::ArrowLeft               =>          self.go_out   (h),
-                    Key::ArrowRight | Key::Enter => { return self.go_in    (h); },
-                    Key::Home                    =>          self.dir_start(h),
-                    Key::End                     =>          self.dir_end  (h),
+                    Key::ArrowUp                 =>          self.up       (h       ),
+                    Key::ArrowDown               =>          self.down     (h       ),
+                    Key::ArrowLeft               => { return self.go_out   (h, false); },
+                    Key::ArrowRight | Key::Enter => { return self.go_in    (h, false); },
+                    Key::Home                    =>          self.dir_start(h       ),
+                    Key::End                     =>          self.dir_end  (h       ),
                     _                            => PaneCommand::DoNothing
                 },
-                Event::Keyboard(KeyboardEvent::Backspace) => {
-                    self.go_out(h)
+                Event::Keyboard(KeyboardEvent::Ctrl(key)) => match key {
+                    Key::ArrowLeft               => { return self.go_out   (h,  true); },
+                    Key::ArrowRight | Key::Enter => { return self.go_in    (h,  true); },
+                    _                            => PaneCommand::DoNothing
                 },
-                Event::Mouse(MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(_x, y)))) => {
-                    let y = y as usize + self.scroll_y;
-
-                    if y < self.entry_count() {
-                        self.focused = y;
-                        return self.go_in(h);
-                    } else {
-                        PaneCommand::DoNothing
-                    }
-                },
-                Event::Mouse(MouseEvent::Hover(HoverEvent::NoModifiers(_x, y))) => {
+                Event::Keyboard(KeyboardEvent::    Backspace) => { return self.go_out(h, false); },
+                Event::Keyboard(KeyboardEvent::CtrlBackspace) => { return self.go_out(h,  true); },
+                Event::Mouse(MouseEvent::Hover(HoverEvent::NoModifiers(_x, y) | HoverEvent::Ctrl(_x, y))) => {
                     let y = y as usize + self.scroll_y;
 
                     if y < self.entry_count() {
@@ -400,6 +431,8 @@ impl PaneView<ViewEvent, Theme, In, Out> for Browsing {
                         PaneCommand::DoNothing
                     }
                 },
+                Event::Mouse(MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(_x, y)))) => { return self.open(h, y, false); },
+                Event::Mouse(MouseEvent::Press(MouseButtonEvent::Ctrl       (MouseButton::Left(_x, y)))) => { return self.open(h, y,  true); },
                 Event::Mouse(MouseEvent::Scroll(ScrollEvent::NoModifiers(scroll_direction))) => match scroll_direction {
                     ScrollDirection::Up  (_x, _y) => self.scroll_dir(-1),
                     ScrollDirection::Down(_x, _y) => self.scroll_dir( 1)

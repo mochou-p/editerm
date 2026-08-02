@@ -64,12 +64,24 @@ struct Editor {
     height:   u16
 }
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub enum ViewEvent {
     #[default]
     DoNothing,
     DrawCursor(u16, u16),
-    CloseMe
+    CloseMe,
+    Open(Box<dyn PaneView<ViewEvent, Theme, In, Out>>)
+}
+
+impl Clone for ViewEvent {
+    fn clone(&self) -> Self {
+        match self {
+            Self::DoNothing        => Self::DoNothing,
+            Self::DrawCursor(x, y) => Self::DrawCursor(*x, *y),
+            Self::CloseMe          => Self::CloseMe,
+            Self::Open(view)       => Self::Open(view.pane_clone())
+        }
+    }
 }
 
 #[derive(Default, Clone)]

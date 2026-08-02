@@ -23,12 +23,26 @@ impl Tabs {
         Self { views, view: 0, pages: vec![vec![0]], page: 0 }
     }
 
-    fn open(&mut self, w: usize, theme: Option<Theme>) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
-        self.views.push(Box::new(Browsing::new(None, None)));
-        self.view = self.views.len() - 1;
+    fn open(
+        &mut self,
+        view:     Box<dyn PaneView<ViewEvent, Theme, In, Out>>,
+        focus_it: bool,
+        w:        usize,
+        theme:    Option<Theme>
+    ) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
+        self.views.push(view);
+
+        if focus_it {
+            self.view = self.views.len() - 1;
+        }
+
         self.redo_pages(w, true, theme);
 
         (PaneCommand::RerenderMe, ViewEvent::DoNothing)
+    }
+
+    fn open_default(&mut self, focus_it: bool, w: usize, theme: Option<Theme>) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
+        self.open(Box::new(Browsing::new(None, None)), focus_it, w, theme)
     }
 
     fn close_i(&mut self, i: usize, w: usize, theme: Option<Theme>) -> (PaneCommand<ViewEvent, Theme, In, Out>, ViewEvent) {
@@ -292,8 +306,8 @@ impl PaneView<ViewEvent, Theme, In, Out> for Tabs {
             Event::Keyboard(KeyboardEvent::Ctrl     (Key::Tab)) => { return self.next(w, None); },
             Event::Keyboard(KeyboardEvent::CtrlShift(Key::Tab)) => { return self.prev(w, None); },
             Event::Keyboard(KeyboardEvent::CtrlChar (      ch)) => match ch {
-                CtrlableChar::T => { return self.   open(           w, None); },
-                CtrlableChar::W => { return self.close_i(self.view, w, None); },
+                CtrlableChar::T => { return self.open_default(           true, w, None); },
+                CtrlableChar::W => { return self.     close_i(self.view,       w, None); },
                 _               => ()
             },
             Event::Keyboard(KeyboardEvent::AltChar(ch)) => match ch {
@@ -323,11 +337,14 @@ impl PaneView<ViewEvent, Theme, In, Out> for Tabs {
 
         let (pane_command, mut view_event) = self.views[self.view].event(event, w as u16, h - 1);
 
-        match &mut view_event {
-            ViewEvent::CloseMe           => { return self.close_i(self.view, w, None); },
-            ViewEvent::DrawCursor(_x, y) => { *y += 1;                                 },
-            _                            => ()
-        }
+        view_event = {
+            match view_event {
+                ViewEvent::CloseMe          => { return self.close_i(self.view,        w, None); },
+                ViewEvent::DrawCursor(x, y) => ViewEvent::DrawCursor(x, y + 1),
+                ViewEvent::Open(view)       => { return self.   open(     view, false, w, None); },
+                original                    => original
+            }
+        };
 
         if let PaneCommand::ReplaceMe(replacement) = pane_command {
             self.views[self.view] = replacement;
