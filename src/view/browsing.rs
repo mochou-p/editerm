@@ -431,8 +431,12 @@ impl PaneView<ViewEvent, Theme, In, Out> for Browsing {
                         PaneCommand::DoNothing
                     }
                 },
-                Event::Mouse(MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(_x, y)))) => { return self.open(h, y, false); },
-                Event::Mouse(MouseEvent::Press(MouseButtonEvent::Ctrl       (MouseButton::Left(_x, y)))) => { return self.open(h, y,  true); },
+                Event::Mouse(MouseEvent::Press(MouseButtonEvent::NoModifiers(MouseButton::Left(_x, y)))) => {
+                    return self.open(h, y, false);
+                },
+                Event::Mouse(MouseEvent::Press(MouseButtonEvent::Ctrl(MouseButton::Left(_x, y)) | MouseButtonEvent::NoModifiers(MouseButton::Middle(_x, y)))) => {
+                    return self.open(h, y,  true);
+                },
                 Event::Mouse(MouseEvent::Scroll(ScrollEvent::NoModifiers(scroll_direction))) => match scroll_direction {
                     ScrollDirection::Up  (_x, _y) => self.scroll_dir(-1),
                     ScrollDirection::Down(_x, _y) => self.scroll_dir( 1)
